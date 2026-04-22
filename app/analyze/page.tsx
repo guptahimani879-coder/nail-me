@@ -93,6 +93,7 @@ export default function AnalyzePage() {
   const [selectedColorName, setSelectedColorName] = useState('');
   const [editedImage, setEditedImage] = useState<string | null>(null);
   const [applyingColor, setApplyingColor] = useState(false);
+  const [autoApplying, setAutoApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
   // Nail art state — pool of all 12 shuffled, shown 3 at a time
@@ -183,7 +184,10 @@ export default function AnalyzePage() {
       if (top) { setSelectedHex(top.hex); setSelectedColorName(top.name); }
       setPhase('results');
       // Mark first color for auto-apply once its preview is ready
-      if (top) autoApplyKey.current = `${top.hex}|${DEFAULT_SHAPE}`;
+      if (top) {
+        autoApplyKey.current = `${top.hex}|${DEFAULT_SHAPE}`;
+        setAutoApplying(true);
+      }
       data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
       // Pick first 3 trending styles
       styleIndexRef.current = 3;
@@ -199,10 +203,15 @@ export default function AnalyzePage() {
       const cached = colorCache.current[wantedKey.current];
       if (cached) { setEditedImage(cached); setApplyingColor(false); wantedKey.current = ''; }
     }
-    // Auto-apply first color as soon as its preview lands (no spinner)
+    // Auto-apply first color as soon as its preview lands
     if (!hasAutoApplied.current && autoApplyKey.current) {
       const cached = colorCache.current[autoApplyKey.current];
-      if (cached) { setEditedImage(cached); hasAutoApplied.current = true; autoApplyKey.current = ''; }
+      if (cached) {
+        setEditedImage(cached);
+        setAutoApplying(false);
+        hasAutoApplied.current = true;
+        autoApplyKey.current = '';
+      }
     }
   }, [cacheVersion]);
 
@@ -292,10 +301,12 @@ export default function AnalyzePage() {
         <div className="mx-4 relative rounded-2xl overflow-hidden bg-[var(--cream-dk)]" style={{ aspectRatio: '4/3' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={displayImage} alt="Your hand" className="w-full h-full object-contain" />
-          {applyingColor && (
+          {(applyingColor || autoApplying) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/20">
               <div className="w-6 h-6 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              <p className="text-white text-xs font-medium bg-black/40 px-3 py-1 rounded-full">Generating preview…</p>
+              <p className="text-white text-xs font-medium bg-black/40 px-3 py-1 rounded-full">
+                {autoApplying ? 'Applying your first look…' : 'Generating preview…'}
+              </p>
             </div>
           )}
           {phase === 'analyzing' && (
