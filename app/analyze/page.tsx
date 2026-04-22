@@ -6,6 +6,7 @@ import NailCanvas from '@/components/NailCanvas';
 import type { NailRecommendation, NailMask } from '@/types';
 
 type Phase = 'tap' | 'segmenting' | 'analyzing' | 'results' | 'error';
+type NailArtImages = Record<number, { src: string | null; loading: boolean }>;
 
 const COMPLEXITY_LABEL: Record<string, string> = {
   easy: 'Easy',
@@ -58,6 +59,7 @@ export default function AnalyzePage() {
   const [recommendation, setRecommendation] = useState<NailRecommendation | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [segmentError, setSegmentError] = useState<string | null>(null);
+  const [nailArtImages, setNailArtImages] = useState<NailArtImages>({});
 
   // Cache all SAM mask URLs after first API call — reused for every subsequent tap
   const allMaskUrlsRef = useRef<string[] | null>(null);
@@ -138,6 +140,37 @@ export default function AnalyzePage() {
       setRecommendation(data);
       if (data.colorRecommendations?.[0]?.hex) setSelectedHex(data.colorRecommendations[0].hex);
       setPhase('results');
+
+      // Kick off nail art image generation in the background
+      const topColor = data.colorRecommendations[0];
+      const initialState: NailArtImages = {};
+      data.nailArtSuggestions.forEach((_, i) => { initialState[i] = { src: null, loading: true }; });
+      setNailArtImages(initialState);
+
+      data.nailArtSuggestions.forEach((art, i) => {
+        fetch('/api/generate-nail-art', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            style: art.style,
+            description: art.description,
+            colorName: topColor?.name ?? '',
+            hex: topColor?.hex ?? '#C47A5A',
+            skinTone: data.skinTone,
+            occasion: data.occasion,
+          }),
+        })
+          .then(r => r.json())
+          .then(json => {
+            setNailArtImages(prev => ({
+              ...prev,
+              [i]: { src: json.image ?? null, loading: false },
+            }));
+          })
+          .catch(() => {
+            setNailArtImages(prev => ({ ...prev, [i]: { src: null, loading: false } }));
+          });
+      });
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Something went wrong');
       setPhase('error');
@@ -290,25 +323,44 @@ export default function AnalyzePage() {
           <section>
             <h2 className="font-display text-xl font-light text-[var(--ink)] mb-4">Nail Art Ideas</h2>
             <div className="space-y-3">
-              {recommendation.nailArtSuggestions.map((art, i) => (
-                <div
-                  key={i}
-                  className="bg-white rounded-2xl p-4 border border-[var(--cream-dk)] animate-fade-up"
-                  style={{ animationDelay: `${i * 0.08}s` }}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <p className="font-medium text-[var(--ink)] text-sm">{art.style}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${COMPLEXITY_COLOR[art.complexity] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {COMPLEXITY_LABEL[art.complexity] ?? art.complexity}
-                    </span>
+              {recommendation.nailArtSuggestions.map((art, i) => {
+                const imgState = nailArtImages[i];
+                return (
+                  <div
+                    key={i}
+                    className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)] animate-fade-up"
+                    style={{ animationDelay: `${i * 0.08}s` }}
+                  >
+                    {/* AI-generated preview image */}
+                    {imgState?.loading ? (
+                      <div className="w-full h-48 bg-[var(--cream-dk)] flex flex-col items-center justify-center gap-2">
+                        <div className="w-5 h-5 rounded-full border-2 border-[var(--ink-light)] border-t-transparent animate-spin" />
+                        <p className="text-xs text-[var(--ink-light)]">Generating preview…</p>
+                      </div>
+                    ) : imgState?.src ? (
+                      <img
+                        src={imgState.src}
+                        alt={`${art.style} nail art preview`}
+                        className="w-full h-48 object-cover"
+                      />
+                    ) : null}
+
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="font-medium text-[var(--ink)] text-sm">{art.style}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${COMPLEXITY_COLOR[art.complexity] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {COMPLEXITY_LABEL[art.complexity] ?? art.complexity}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--ink-mid)] leading-relaxed mb-2">{art.description}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-[var(--ink-light)]">{art.toolsNeeded.join(' · ')}</p>
+                        <p className="text-xs text-[var(--ink-light)]">{art.estimatedTime}</p>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-[var(--ink-mid)] leading-relaxed mb-2">{art.description}</p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-[var(--ink-light)]">{art.toolsNeeded.join(' · ')}</p>
-                    <p className="text-xs text-[var(--ink-light)]">{art.estimatedTime}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
