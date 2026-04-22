@@ -47,7 +47,7 @@ export async function analyzeNailsWithGPT(
   occasion: string,
 ): Promise<NailRecommendation> {
   const response = await client.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.4',
     max_tokens: 1500,
     messages: [
       {
