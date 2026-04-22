@@ -1,25 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { style, description, colorName, hex, skinTone, occasion } = await req.json();
+    const { imageBase64, mediaType, style, description, colorName, hex } = await req.json();
 
     if (!style || !description) {
       return NextResponse.json({ error: 'MISSING_PARAMS' }, { status: 400 });
     }
 
-    const prompt = `Close-up professional nail photography of a hand with beautifully manicured nails. Nail art style: ${style}. ${description}. Nail color: ${colorName} (${hex}). Skin tone: ${skinTone}. Occasion: ${occasion}. Sharp focus, studio lighting, elegant, high-end beauty editorial style. No text or watermarks.`;
+    const prompt = `Apply this nail art to the fingernails in the photo: ${style} — ${description}. Use ${colorName} (${hex}) as the base color. Keep the hand, skin tone, and background identical. Only change the nails.`;
 
-    const response = await client.images.generate({
-      model: 'gpt-image-2',
-      prompt,
-      n: 1,
-      size: '1024x1024',
-      quality: 'medium',
-    });
+    let response;
+
+    if (imageBase64) {
+      // Edit the actual hand photo for a personalised preview
+      const buffer = Buffer.from(imageBase64, 'base64');
+      const ext = mediaType === 'image/png' ? 'png' : 'jpg';
+      const file = await toFile(buffer, `hand.${ext}`, { type: mediaType });
+
+      response = await client.images.edit({
+        model: 'gpt-image-2',
+        image: file,
+        prompt,
+        n: 1,
+        size: '1024x1024',
+      });
+    } else {
+      // Fallback: generate a generic preview
+      response = await client.images.generate({
+        model: 'gpt-image-2',
+        prompt: `Close-up of beautifully manicured nails with ${style} nail art. ${description}. Nail color: ${colorName} (${hex}). Studio beauty photography.`,
+        n: 1,
+        size: '1024x1024',
+        quality: 'medium',
+      });
+    }
 
     const b64 = response.data?.[0]?.b64_json;
     if (!b64) throw new Error('No image returned');

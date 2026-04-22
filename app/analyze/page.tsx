@@ -1,18 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import NailCanvas from '@/components/NailCanvas';
-import type { NailRecommendation, NailMask } from '@/types';
+import type { NailRecommendation } from '@/types';
 
-type Phase = 'tap' | 'segmenting' | 'analyzing' | 'results' | 'error';
+type Phase = 'analyzing' | 'results' | 'error';
 type NailArtImages = Record<number, { src: string | null; loading: boolean }>;
-
-const COMPLEXITY_LABEL: Record<string, string> = {
-  easy: 'Easy',
-  intermediate: 'Intermediate',
-  advanced: 'Advanced',
-};
 
 const COMPLEXITY_COLOR: Record<string, string> = {
   easy: 'bg-[var(--sage-pale)] text-[var(--sage-dark)]',
@@ -20,173 +13,117 @@ const COMPLEXITY_COLOR: Record<string, string> = {
   advanced: 'bg-[var(--rose-pale)] text-[var(--rose-dark)]',
 };
 
-function proxied(url: string) {
-  return `/api/proxy-mask?url=${encodeURIComponent(url)}`;
-}
-
-// Load a mask and return { coversPoint, area } — area is white pixel count.
-// We pick the smallest mask that covers the click (most specific = nail, not whole hand).
-async function getMaskInfo(maskUrl: string, imgX: number, imgY: number): Promise<{ coversPoint: boolean; area: number }> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      const point = ctx.getImageData(imgX, imgY, 1, 1).data;
-      if (point[0] <= 128) { resolve({ coversPoint: false, area: 0 }); return; }
-      // Count white pixels to measure mask size
-      const { data } = ctx.getImageData(0, 0, c.width, c.height);
-      let area = 0;
-      for (let i = 0; i < data.length; i += 4) { if (data[i] > 128) area++; }
-      resolve({ coversPoint: true, area });
-    };
-    img.onerror = () => resolve({ coversPoint: false, area: 0 });
-    img.src = proxied(maskUrl);
-  });
-}
-
 export default function AnalyzePage() {
   const router = useRouter();
   const [imageDataUri, setImageDataUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string>('');
+  const [mediaType, setMediaType] = useState<string>('image/jpeg');
   const [occasion, setOccasion] = useState<string>('casual');
-  const [phase, setPhase] = useState<Phase>('tap');
-  const [masks, setMasks] = useState<NailMask[]>([]);
-  const [segmentingPoint, setSegmentingPoint] = useState<{ x: number; y: number } | null>(null);
-  const [selectedHex, setSelectedHex] = useState<string>('#C47A5A');
+  const [phase, setPhase] = useState<Phase>('analyzing');
   const [recommendation, setRecommendation] = useState<NailRecommendation | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [segmentError, setSegmentError] = useState<string | null>(null);
+  const [selectedHex, setSelectedHex] = useState<string>('');
+  const [selectedColorName, setSelectedColorName] = useState<string>('');
+  const [editedImage, setEditedImage] = useState<string | null>(null);
+  const [applyingColor, setApplyingColor] = useState(false);
   const [nailArtImages, setNailArtImages] = useState<NailArtImages>({});
-
-  // Cache all SAM mask URLs after first API call — reused for every subsequent tap
-  const allMaskUrlsRef = useRef<string[] | null>(null);
 
   useEffect(() => {
     const img = sessionStorage.getItem('nail_image');
     const occ = sessionStorage.getItem('nail_occasion');
     if (!img) { router.replace('/'); return; }
     setImageDataUri(img);
+    const b64 = img.replace(/^data:image\/\w+;base64,/, '');
+    const mt = img.match(/^data:(image\/\w+);/)?.[1] ?? 'image/jpeg';
+    setImageBase64(b64);
+    setMediaType(mt);
     if (occ) setOccasion(occ);
   }, [router]);
 
-  const handleNailClick = useCallback(async (imgX: number, imgY: number) => {
-    if (phase !== 'tap') return;
-    setSegmentingPoint({ x: imgX, y: imgY });
-    setSegmentError(null);
-
+  const analyze = useCallback(async (b64: string, mt: string, occ: string) => {
     try {
-      // Fetch all masks from SAM on the first tap; reuse cache afterwards
-      if (!allMaskUrlsRef.current) {
-        setPhase('segmenting');
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 120_000);
-        const res = await fetch('/api/segment', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ imageDataUri }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        setPhase('tap');
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message ?? `Segmentation failed (${res.status})`);
-        }
-        const { maskUrls } = await res.json();
-        allMaskUrlsRef.current = maskUrls as string[];
-      }
-
-      // Check all masks in parallel, then pick the smallest that covers the point.
-      // Smallest area = most specific mask (nail vs whole hand vs whole image).
-      const maskUrls = allMaskUrlsRef.current!;
-      const infos = await Promise.all(maskUrls.map(url => getMaskInfo(url, imgX, imgY)));
-      const candidates = maskUrls
-        .map((url, i) => ({ url, ...infos[i] }))
-        .filter(m => m.coversPoint)
-        .sort((a, b) => a.area - b.area);
-      const chosenUrl = candidates[0]?.url ?? maskUrls[0];
-
-      setMasks(prev => [...prev, { pointX: imgX, pointY: imgY, maskImageUrl: chosenUrl! }]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Segmentation failed';
-      setSegmentError(
-        msg.includes('abort') ? 'Timed out — Replicate may be cold-starting, try tapping again' : msg,
-      );
-      setPhase('tap');
-    } finally {
-      setSegmentingPoint(null);
-    }
-  }, [phase, imageDataUri]);
-
-  const handleAnalyze = useCallback(async () => {
-    if (!imageDataUri) return;
-    setPhase('analyzing');
-    try {
-      const base64 = imageDataUri.replace(/^data:image\/\w+;base64,/, '');
-      const mediaType = imageDataUri.match(/^data:(image\/\w+);/)?.[1] ?? 'image/jpeg';
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType, occasion }),
+        body: JSON.stringify({ image: b64, mediaType: mt, occasion: occ }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message ?? 'Analysis failed');
-      }
       const data: NailRecommendation = await res.json();
       setRecommendation(data);
-      if (data.colorRecommendations?.[0]?.hex) setSelectedHex(data.colorRecommendations[0].hex);
+      const topColor = data.colorRecommendations?.[0];
+      if (topColor) {
+        setSelectedHex(topColor.hex);
+        setSelectedColorName(topColor.name);
+      }
       setPhase('results');
 
-      // Kick off nail art image generation in the background
-      const topColor = data.colorRecommendations[0];
-      const initialState: NailArtImages = {};
-      data.nailArtSuggestions.forEach((_, i) => { initialState[i] = { src: null, loading: true }; });
-      setNailArtImages(initialState);
+      // Generate nail art previews using the actual hand photo
+      const initial: NailArtImages = {};
+      data.nailArtSuggestions.forEach((_, i) => { initial[i] = { src: null, loading: true }; });
+      setNailArtImages(initial);
 
       data.nailArtSuggestions.forEach((art, i) => {
         fetch('/api/generate-nail-art', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
+            imageBase64: b64,
+            mediaType: mt,
             style: art.style,
             description: art.description,
             colorName: topColor?.name ?? '',
             hex: topColor?.hex ?? '#C47A5A',
-            skinTone: data.skinTone,
-            occasion: data.occasion,
           }),
         })
           .then(r => r.json())
           .then(json => {
-            setNailArtImages(prev => ({
-              ...prev,
-              [i]: { src: json.image ?? null, loading: false },
-            }));
+            setNailArtImages(prev => ({ ...prev, [i]: { src: json.image ?? null, loading: false } }));
           })
           .catch(() => {
             setNailArtImages(prev => ({ ...prev, [i]: { src: null, loading: false } }));
           });
       });
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : 'Something went wrong');
+    } catch {
+      setErrorMsg('Analysis failed — please try again');
       setPhase('error');
     }
-  }, [imageDataUri, occasion]);
+  }, []);
+
+  useEffect(() => {
+    if (imageBase64 && mediaType && occasion) {
+      analyze(imageBase64, mediaType, occasion);
+    }
+  }, [imageBase64, mediaType, occasion, analyze]);
+
+  const applyColor = useCallback(async (hex: string, colorName: string) => {
+    if (applyingColor || !imageBase64) return;
+    setSelectedHex(hex);
+    setSelectedColorName(colorName);
+    setApplyingColor(true);
+    try {
+      const res = await fetch('/api/apply-nail-color', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ imageBase64, mediaType, colorName, hex }),
+      });
+      const json = await res.json();
+      if (json.image) setEditedImage(json.image);
+    } catch {
+      // silently fail — original image stays visible
+    } finally {
+      setApplyingColor(false);
+    }
+  }, [applyingColor, imageBase64, mediaType]);
 
   if (!imageDataUri) return null;
+
+  const displayImage = editedImage ?? imageDataUri;
 
   return (
     <main className="min-h-screen flex flex-col max-w-lg mx-auto"
       style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
 
-      {/* Sticky top section: header + canvas + tap controls */}
+      {/* Header */}
       <div className="sticky top-0 z-10 bg-[var(--cream)] px-4 pt-4 pb-3">
-
-        {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={() => router.push('/')}
@@ -198,86 +135,50 @@ export default function AnalyzePage() {
           <div className="w-14" />
         </div>
 
-        {/* SAM segmenting banner */}
-        {phase === 'segmenting' && (
-          <div className="mb-3 px-3 py-2.5 rounded-xl bg-[var(--cream-dk)] flex items-center gap-3 animate-fade-up">
-            <div className="w-4 h-4 rounded-full border-2 border-[var(--ink)] border-t-transparent animate-spin flex-shrink-0" />
-            <p className="text-xs text-[var(--ink-mid)]">Mapping your photo… first tap takes ~30s</p>
-          </div>
-        )}
-
-        {/* Canvas */}
-        <NailCanvas
-        imageDataUri={imageDataUri}
-        masks={masks}
-        selectedHex={selectedHex}
-        onNailClick={handleNailClick}
-        segmentingPoint={segmentingPoint}
-        phase={phase === 'tap' || phase === 'segmenting' ? 'tap' : 'results'}
-      />
-
-        {/* Segment error */}
-        {segmentError && (
-          <div className="mt-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
-            <span className="flex-shrink-0">⚠️</span>
-            <p className="flex-1">{segmentError}</p>
-            <button onClick={() => setSegmentError(null)} className="ml-auto text-red-400 flex-shrink-0">✕</button>
-          </div>
-        )}
-
-        {/* Tap controls */}
-        {(phase === 'tap' || phase === 'segmenting') && (
-          <div className="mt-3 animate-fade-up">
-            <p className="text-center text-xs text-[var(--ink-mid)] mb-3">
-              {masks.length === 0
-                ? 'Tap each nail in the photo to select it'
-                : `${masks.length} nail${masks.length > 1 ? 's' : ''} selected — tap more or continue`}
-            </p>
-            {masks.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setMasks([]); allMaskUrlsRef.current = null; }}
-                  className="flex-1 py-3 rounded-2xl border border-[var(--cream-dk)] text-[var(--ink-mid)] text-sm font-medium active:bg-[var(--cream-dk)]"
-                >
-                  Reset
-                </button>
-                <button
-                  onClick={handleAnalyze}
-                  className="flex-[2] py-3 rounded-2xl bg-[var(--ink)] text-white text-sm font-medium animate-cta-glow active:scale-[0.98]"
-                >
-                  Analyze My Nails →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Hand photo */}
+        <div className="relative rounded-2xl overflow-hidden bg-[var(--cream-dk)]" style={{ aspectRatio: '4/3' }}>
+          <img
+            src={displayImage}
+            alt="Your hand"
+            className="w-full h-full object-cover"
+          />
+          {applyingColor && (
+            <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center gap-2">
+              <div className="w-6 h-6 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              <p className="text-white text-xs font-medium">Applying color…</p>
+            </div>
+          )}
+          {editedImage && !applyingColor && (
+            <div className="absolute bottom-2 right-2">
+              <span className="text-xs bg-black/50 text-white px-2 py-1 rounded-full">AI preview</span>
+            </div>
+          )}
+        </div>
 
         {/* Analyzing spinner */}
         {phase === 'analyzing' && (
           <div className="mt-4 flex items-center justify-center gap-3 animate-fade-up">
             <div className="w-5 h-5 rounded-full border-2 border-[var(--ink)] border-t-transparent animate-spin" />
-            <p className="text-[var(--ink-mid)] text-sm">Reading your skin tone & nails…</p>
+            <p className="text-[var(--ink-mid)] text-sm">Analysing your skin tone & nails…</p>
           </div>
         )}
 
-        {/* Error */}
         {phase === 'error' && (
           <div className="mt-4 text-center animate-fade-up">
             <p className="text-red-500 text-sm mb-3">{errorMsg}</p>
-            <button onClick={() => setPhase('tap')} className="px-6 py-2 rounded-full bg-[var(--ink)] text-white text-sm">
+            <button
+              onClick={() => { setPhase('analyzing'); analyze(imageBase64, mediaType, occasion); }}
+              className="px-6 py-2 rounded-full bg-[var(--ink)] text-white text-sm"
+            >
               Try again
             </button>
           </div>
         )}
-
-      </div>{/* end sticky */}
+      </div>
 
       {/* Scrollable results */}
-      <div className="px-4">
-
-      {/* Results */}
       {phase === 'results' && recommendation && (
-        <div className="mt-8 space-y-8 animate-fade-up">
+        <div className="px-4 mt-4 space-y-8 animate-fade-up">
 
           <div className="bg-white rounded-2xl p-4 border border-[var(--cream-dk)] text-sm text-[var(--ink-mid)]">
             <span className="font-medium text-[var(--ink)]">Skin read: </span>
@@ -292,18 +193,21 @@ export default function AnalyzePage() {
             </div>
           )}
 
+          {/* Color recommendations */}
           <section>
-            <h2 className="font-display text-xl font-light text-[var(--ink)] mb-4">Your Colors</h2>
+            <h2 className="font-display text-xl font-light text-[var(--ink)] mb-1">Your Colors</h2>
+            <p className="text-xs text-[var(--ink-light)] mb-4">Tap a color to see it on your nails</p>
             <div className="space-y-3">
               {recommendation.colorRecommendations.map((c, i) => (
                 <button
                   key={i}
-                  onClick={() => setSelectedHex(c.hex)}
+                  onClick={() => applyColor(c.hex, c.name)}
+                  disabled={applyingColor}
                   className={`w-full flex items-center gap-4 p-3 rounded-2xl border transition-all text-left ${
                     selectedHex === c.hex
                       ? 'border-[var(--ink)] bg-white shadow-md'
                       : 'border-[var(--cream-dk)] bg-white hover:border-[var(--ink-light)]'
-                  }`}
+                  } ${applyingColor ? 'opacity-60' : ''}`}
                 >
                   <div
                     className="w-11 h-11 rounded-full flex-shrink-0 shadow-sm border border-white/60 animate-swatch-pop"
@@ -314,12 +218,15 @@ export default function AnalyzePage() {
                     <p className="text-xs text-[var(--ink-light)] truncate">{c.brand} · {c.productName}</p>
                     <p className="text-xs text-[var(--ink-mid)] mt-0.5 leading-snug">{c.reason}</p>
                   </div>
-                  <span className="text-xs font-mono text-[var(--ink-light)] flex-shrink-0">{c.hex}</span>
+                  {selectedHex === c.hex && (
+                    <span className="text-xs bg-[var(--ink)] text-white px-2 py-0.5 rounded-full flex-shrink-0">On</span>
+                  )}
                 </button>
               ))}
             </div>
           </section>
 
+          {/* Nail art suggestions */}
           <section>
             <h2 className="font-display text-xl font-light text-[var(--ink)] mb-4">Nail Art Ideas</h2>
             <div className="space-y-3">
@@ -331,25 +238,20 @@ export default function AnalyzePage() {
                     className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)] animate-fade-up"
                     style={{ animationDelay: `${i * 0.08}s` }}
                   >
-                    {/* AI-generated preview image */}
                     {imgState?.loading ? (
-                      <div className="w-full h-48 bg-[var(--cream-dk)] flex flex-col items-center justify-center gap-2">
+                      <div className="w-full h-52 bg-[var(--cream-dk)] flex flex-col items-center justify-center gap-2">
                         <div className="w-5 h-5 rounded-full border-2 border-[var(--ink-light)] border-t-transparent animate-spin" />
-                        <p className="text-xs text-[var(--ink-light)]">Generating preview…</p>
+                        <p className="text-xs text-[var(--ink-light)]">Generating on your hand…</p>
                       </div>
                     ) : imgState?.src ? (
-                      <img
-                        src={imgState.src}
-                        alt={`${art.style} nail art preview`}
-                        className="w-full h-48 object-cover"
-                      />
+                      <img src={imgState.src} alt={`${art.style} preview`} className="w-full h-52 object-cover" />
                     ) : null}
 
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <p className="font-medium text-[var(--ink)] text-sm">{art.style}</p>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${COMPLEXITY_COLOR[art.complexity] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {COMPLEXITY_LABEL[art.complexity] ?? art.complexity}
+                          {art.complexity}
                         </span>
                       </div>
                       <p className="text-xs text-[var(--ink-mid)] leading-relaxed mb-2">{art.description}</p>
@@ -372,8 +274,6 @@ export default function AnalyzePage() {
           </button>
         </div>
       )}
-
-      </div>{/* end scrollable */}
     </main>
   );
 }
