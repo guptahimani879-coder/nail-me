@@ -23,7 +23,6 @@ export default function AnalyzePage() {
   const [recommendation, setRecommendation] = useState<NailRecommendation | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [selectedHex, setSelectedHex] = useState<string>('');
-  const [selectedColorName, setSelectedColorName] = useState<string>('');
   const [editedImage, setEditedImage] = useState<string | null>(null);
   const [applyingColor, setApplyingColor] = useState(false);
   const [nailArtImages, setNailArtImages] = useState<NailArtImages>({});
@@ -52,7 +51,6 @@ export default function AnalyzePage() {
       const topColor = data.colorRecommendations?.[0];
       if (topColor) {
         setSelectedHex(topColor.hex);
-        setSelectedColorName(topColor.name);
       }
       setPhase('results');
 
@@ -97,7 +95,6 @@ export default function AnalyzePage() {
   const applyColor = useCallback(async (hex: string, colorName: string) => {
     if (applyingColor || !imageBase64) return;
     setSelectedHex(hex);
-    setSelectedColorName(colorName);
     setApplyingColor(true);
     try {
       const res = await fetch('/api/apply-nail-color', {
