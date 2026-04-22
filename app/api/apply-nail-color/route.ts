@@ -5,15 +5,15 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, mediaType, colorName, hex } = await req.json();
+    const { imageBase64, colorName, hex } = await req.json();
 
     if (!imageBase64 || !colorName) {
       return NextResponse.json({ error: 'MISSING_PARAMS' }, { status: 400 });
     }
 
+    // Caller must send a PNG base64 string
     const buffer = Buffer.from(imageBase64, 'base64');
-    const ext = mediaType === 'image/png' ? 'png' : 'jpg';
-    const file = await toFile(buffer, `hand.${ext}`, { type: mediaType });
+    const file = await toFile(buffer, 'hand.png', { type: 'image/png' });
 
     const response = await client.images.edit({
       model: 'gpt-image-2',
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ image: `data:image/png;base64,${b64}` });
   } catch (err: unknown) {
-    console.error('[/api/apply-nail-color]', err);
-    return NextResponse.json({ error: 'GENERATION_FAILED' }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[/api/apply-nail-color]', msg);
+    return NextResponse.json({ error: 'GENERATION_FAILED', message: msg }, { status: 500 });
   }
 }

@@ -7,6 +7,21 @@ import type { NailRecommendation } from '@/types';
 type Phase = 'analyzing' | 'results' | 'error';
 type NailArtImages = Record<number, { src: string | null; loading: boolean }>;
 
+function toPngBase64(dataUri: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      resolve(c.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''));
+    };
+    img.onerror = reject;
+    img.src = dataUri;
+  });
+}
+
 const COMPLEXITY_COLOR: Record<string, string> = {
   easy: 'bg-[var(--sage-pale)] text-[var(--sage-dark)]',
   intermediate: 'bg-amber-50 text-amber-700',
@@ -25,6 +40,7 @@ export default function AnalyzePage() {
   const [selectedHex, setSelectedHex] = useState<string>('');
   const [editedImage, setEditedImage] = useState<string | null>(null);
   const [applyingColor, setApplyingColor] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
   const [nailArtImages, setNailArtImages] = useState<NailArtImages>({});
 
   useEffect(() => {
@@ -93,23 +109,29 @@ export default function AnalyzePage() {
   }, [imageBase64, mediaType, occasion, analyze]);
 
   const applyColor = useCallback(async (hex: string, colorName: string) => {
-    if (applyingColor || !imageBase64) return;
+    if (applyingColor || !imageDataUri) return;
     setSelectedHex(hex);
     setApplyingColor(true);
+    setApplyError(null);
     try {
+      const pngBase64 = await toPngBase64(imageDataUri);
       const res = await fetch('/api/apply-nail-color', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mediaType, colorName, hex }),
+        body: JSON.stringify({ imageBase64: pngBase64, colorName, hex }),
       });
       const json = await res.json();
-      if (json.image) setEditedImage(json.image);
-    } catch {
-      // silently fail — original image stays visible
+      if (json.image) {
+        setEditedImage(json.image);
+      } else {
+        setApplyError(json.message ?? 'Failed to apply color');
+      }
+    } catch (e) {
+      setApplyError(e instanceof Error ? e.message : 'Failed to apply color');
     } finally {
       setApplyingColor(false);
     }
-  }, [applyingColor, imageBase64, mediaType]);
+  }, [applyingColor, imageDataUri]);
 
   if (!imageDataUri) return null;
 
@@ -151,6 +173,14 @@ export default function AnalyzePage() {
             </div>
           )}
         </div>
+
+        {applyError && (
+          <div className="mt-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+            <span>⚠️</span>
+            <p className="flex-1">{applyError}</p>
+            <button onClick={() => setApplyError(null)} className="text-red-400">✕</button>
+          </div>
+        )}
 
         {/* Analyzing spinner */}
         {phase === 'analyzing' && (
