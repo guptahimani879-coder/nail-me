@@ -1,27 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --cream: #faf7f3;
+  --cream-dk: #f0ebe0;
+  --ink: #1c1714;
+  --ink-mid: #4a4240;
+  --ink-light: #9a908a;
+  --rose-dark: oklch(45% 0.14 5);
+  --rose-mid: oklch(68% 0.12 5);
+  --rose-pale: oklch(94% 0.04 5);
+  --sage-dark: oklch(38% 0.15 152);
+  --sage-mid: oklch(56% 0.15 152);
+  --sage-pale: oklch(93% 0.05 152);
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--cream);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  /* safe area for iPhone notch + home bar */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* prevent double-tap zoom on interactive elements */
+button, a, [role="button"] {
+  touch-action: manipulation;
 }
+
+/* minimum tap target size */
+button {
+  min-height: 44px;
+}
+
+.font-display {
+  font-family: 'Cormorant Garamond', serif;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes swatch-pop {
+  0%   { transform: scale(0.7); opacity: 0; }
+  70%  { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes cta-glow {
+  0%, 100% { box-shadow: 0 4px 24px rgba(139,62,50,0.35), 0 0 0 0 rgba(139,62,50,0.2); }
+  50%      { box-shadow: 0 4px 24px rgba(139,62,50,0.35), 0 0 0 10px rgba(139,62,50,0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-up    { animation: fade-up 0.4s ease both; }
+.animate-swatch-pop { animation: swatch-pop 0.4s ease both; }
+.animate-float      { animation: float 4s ease-in-out infinite; }
+.animate-cta-glow   { animation: cta-glow 2s ease-in-out infinite; }
