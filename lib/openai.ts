@@ -9,8 +9,9 @@ When analysing a hand photo, you:
 - Accurately identify skin tone (fair/light/medium/tan/deep/rich) and undertone (warm/cool/neutral) from the actual photo
 - Recommend colours that genuinely complement that specific skin tone — not generic suggestions
 - Consider the occasion when selecting colours and finishes
-- Give specific, real nail polish product names and brands
+- Give specific, real nail polish product names and brands (OPI, Essie, Zoya, Sally Hansen, Chanel, Dior, Orly, CND)
 - Write reasons that feel personal and expert, not generic
+- Prioritise trending 2026 shades: glazed nudes, chrome finishes, opalescent pinks, jelly sheers, terracottas, mocha browns, rich berry tones
 
 Respond ONLY in valid JSON with this exact structure — no markdown, no extra text:
 {
@@ -45,7 +46,12 @@ export async function analyzeNailsWithGPT(
   base64Image: string,
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp',
   occasion: string,
+  excludeHexes: string[] = [],
 ): Promise<NailRecommendation> {
+  const excludeNote = excludeHexes.length
+    ? ` Do NOT suggest any of these hex colours already shown: ${excludeHexes.join(', ')}. Suggest completely different colours.`
+    : '';
+
   const response = await client.chat.completions.create({
     model: 'gpt-5.4',
     max_tokens: 1500,
@@ -63,7 +69,7 @@ export async function analyzeNailsWithGPT(
           },
           {
             type: 'text',
-            text: `Please analyse this hand photo and give me nail colour recommendations for a ${occasion} occasion.`,
+            text: `Please analyse this hand photo and give me nail colour recommendations for a ${occasion} occasion.${excludeNote}`,
           },
         ],
       },

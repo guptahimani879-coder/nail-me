@@ -2,14 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import type { NailRecommendation } from '@/types';
+import type { NailRecommendation, ColorRecommendation } from '@/types';
 
 type Phase = 'analyzing' | 'results' | 'error';
 type Tab = 'colors' | 'nail-art';
-type NailArtImages = Record<number, { src: string | null; loading: boolean }>;
-// cache key: `${hex}|${shape}`
 type ColorCache = Record<string, string>;
-type ColorLoading = Set<string>;
 
 const SHAPES = ['Round', 'Oval', 'Squoval', 'Square', 'Almond', 'Stiletto', 'Coffin'];
 const DEFAULT_SHAPE = 'Oval';
@@ -27,6 +24,26 @@ const OCCASION_TAGS: Record<string, string[]> = {
   holiday: ['Holiday', 'Party'],
   fun:     ['Fun', 'Night Out'],
 };
+
+// Curated 2026 trending nail art styles (Pinterest + industry sources)
+const TRENDING_STYLES = [
+  { style: 'Glazed Donut', description: 'Sheer iridescent glaze over a nude base creating a high-shine pearl finish — the Hailey Bieber signature look', complexity: 'easy', estimatedTime: '15 mins', toolsNeeded: ['chrome powder', 'gel top coat'] },
+  { style: 'Chrome Aura', description: 'Blended metallic chrome colours diffused at the centre of each nail to create a glowing, otherworldly aura effect', complexity: 'intermediate', estimatedTime: '30 mins', toolsNeeded: ['chrome powders', 'sponge applicator'] },
+  { style: 'Jelly Glass', description: 'Translucent syrup-coloured polish with iridescent shimmer — looks like hand-blown glass or expensive hard candy', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['sheer jelly polish', 'chrome top coat'] },
+  { style: 'Neo Deco', description: 'Crisp geometric chevrons and fan arches in metallic gold — art deco revival that dominated Pinterest in 2026', complexity: 'intermediate', estimatedTime: '40 mins', toolsNeeded: ['nail tape', 'gold nail art pen', 'fine brush'] },
+  { style: 'Cloudy French', description: 'Soft sheer take on French tips with a milky diffused white edge — the clean-girl aesthetic elevated', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['sheer white polish', 'French tip brush'] },
+  { style: 'Opalescent Pearl', description: 'Milky iridescent finish that shifts between pink, white and lavender like the inside of a seashell', complexity: 'easy', estimatedTime: '15 mins', toolsNeeded: ['pearl chrome powder', 'gel base'] },
+  { style: 'Pastel Swirl', description: 'Dreamy hand-painted pastel swirls blending two or three shades on each nail — searches up 70% on Pinterest', complexity: 'intermediate', estimatedTime: '35 mins', toolsNeeded: ['dotting tool', 'thin brush', 'pastel polishes'] },
+  { style: 'Quiet Luxury', description: 'Barely-there sheer nude with ultra-high gloss finish and a whisper of shimmer — no-nail-look elevated', complexity: 'easy', estimatedTime: '10 mins', toolsNeeded: ['sheer nude polish', 'high-gloss top coat'] },
+  { style: 'Liquid Metal', description: 'Mirror-chrome finish that looks like real liquid jewellery — bold yet minimal, trending across runways', complexity: 'intermediate', estimatedTime: '25 mins', toolsNeeded: ['mirror chrome powder', 'no-wipe top coat'] },
+  { style: 'Wilderkind Floral', description: 'Soft watercolour botanicals in petal pinks and sage greens — one of Pinterest Predicts 2026 top styles', complexity: 'advanced', estimatedTime: '60 mins', toolsNeeded: ['fine nail brush', 'pastel polishes', 'dotting tool'] },
+  { style: 'Striped Chrome', description: 'Clean metallic double-stripe over a nude base — minimal but striking, huge on TikTok this spring', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['nail tape', 'chrome polish', 'fine brush'] },
+  { style: 'Velvet Bloom', description: 'Rich velvet-texture finish with a soft-focus depth — catches light like fabric, trending in quiet luxury circles', complexity: 'intermediate', estimatedTime: '30 mins', toolsNeeded: ['velvet powder', 'matte top coat', 'sponge'] },
+];
+
+function shuffle<T>(arr: T[]): T[] {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
 
 function toPngBase64(dataUri: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -51,19 +68,23 @@ async function fetchColorPreview(pngBase64: string, colorName: string, hex: stri
     });
     const json = await res.json();
     return json.image ?? null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
+
+type NailArtEntry = typeof TRENDING_STYLES[0] & { src: string | null; loading: boolean };
 
 export default function AnalyzePage() {
   const router = useRouter();
 
   const [imageDataUri, setImageDataUri] = useState<string | null>(null);
   const pngBase64Ref = useRef<string>('');
+  const rawBase64Ref = useRef<string>('');
+  const mediaTypeRef = useRef<string>('image/jpeg');
   const [occasion, setOccasion] = useState<string>('casual');
+
   const [phase, setPhase] = useState<Phase>('analyzing');
   const [recommendation, setRecommendation] = useState<NailRecommendation | null>(null);
+  const [allColors, setAllColors] = useState<ColorRecommendation[]>([]);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<Tab>('colors');
@@ -73,17 +94,23 @@ export default function AnalyzePage() {
   const [editedImage, setEditedImage] = useState<string | null>(null);
   const [applyingColor, setApplyingColor] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
-  const [nailArtImages, setNailArtImages] = useState<NailArtImages>({});
-  const [sharing, setSharing] = useState(false);
 
-  // Cache: hex|shape -> data URI. Avoids re-generating the same combo.
+  // Nail art state — pool of all 12 shuffled, shown 3 at a time
+  const stylePoolRef = useRef<typeof TRENDING_STYLES>([]);
+  const styleIndexRef = useRef(0);
+  const [nailArtEntries, setNailArtEntries] = useState<NailArtEntry[]>([]);
+  const [refreshingArt, setRefreshingArt] = useState(false);
+
+  // Color refresh state
+  const [refreshingColors, setRefreshingColors] = useState(false);
+
+  // Color preview cache: hex|shape → data URI
   const colorCache = useRef<ColorCache>({});
-  // Which cache keys are currently in-flight
-  const colorLoading = useRef<ColorLoading>(new Set());
-  // After a tap on a color that's still loading, remember what we want
+  const colorLoading = useRef<Set<string>>(new Set());
   const wantedKey = useRef<string>('');
-  // Trigger re-render when cache entries land
   const [cacheVersion, setCacheVersion] = useState(0);
+
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     const img = sessionStorage.getItem('nail_image');
@@ -91,103 +118,122 @@ export default function AnalyzePage() {
     if (!img) { router.replace('/'); return; }
     setImageDataUri(img);
     if (occ) setOccasion(occ);
+    rawBase64Ref.current = img.replace(/^data:image\/\w+;base64,/, '');
+    mediaTypeRef.current = img.match(/^data:(image\/\w+);/)?.[1] ?? 'image/jpeg';
     toPngBase64(img).then(b64 => { pngBase64Ref.current = b64; }).catch(() => {});
+    // Shuffle the style pool once
+    stylePoolRef.current = shuffle(TRENDING_STYLES);
   }, [router]);
 
-  // Pre-warm a color into cache
   const warmColor = useCallback((colorName: string, hex: string, shape: string) => {
     const key = `${hex}|${shape}`;
     if (colorCache.current[key] || colorLoading.current.has(key)) return;
     colorLoading.current.add(key);
     fetchColorPreview(pngBase64Ref.current, colorName, hex, shape).then(src => {
       colorLoading.current.delete(key);
-      if (src) {
-        colorCache.current[key] = src;
-        setCacheVersion(v => v + 1); // trigger re-render so waiting taps resolve
-      }
+      if (src) { colorCache.current[key] = src; setCacheVersion(v => v + 1); }
     });
   }, []);
 
-  const analyze = useCallback(async (img: string, occ: string) => {
+  const generateNailArtBatch = useCallback((styles: typeof TRENDING_STYLES, topColor: ColorRecommendation | undefined) => {
+    const entries: NailArtEntry[] = styles.map(s => ({ ...s, src: null, loading: true }));
+    setNailArtEntries(entries);
+    styles.forEach((style, i) => {
+      fetch('/api/generate-nail-art', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: pngBase64Ref.current,
+          mediaType: 'image/png',
+          style: style.style,
+          description: style.description,
+          colorName: topColor?.name ?? '',
+          hex: topColor?.hex ?? '#C47A5A',
+        }),
+      })
+        .then(r => r.json())
+        .then(json => setNailArtEntries(prev => prev.map((e, idx) => idx === i ? { ...e, src: json.image ?? null, loading: false } : e)))
+        .catch(() => setNailArtEntries(prev => prev.map((e, idx) => idx === i ? { ...e, src: null, loading: false } : e)));
+    });
+  }, []);
+
+  const analyze = useCallback(async (occ: string, excludeHexes: string[] = []) => {
     try {
-      const b64 = img.replace(/^data:image\/\w+;base64,/, '');
-      const mt = img.match(/^data:(image\/\w+);/)?.[1] ?? 'image/jpeg';
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ image: b64, mediaType: mt, occasion: occ }),
+        body: JSON.stringify({ image: rawBase64Ref.current, mediaType: mediaTypeRef.current, occasion: occ, excludeHexes }),
       });
       const data: NailRecommendation = await res.json();
+      return data;
+    } catch { return null; }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    if (!rawBase64Ref.current || !occasion) return;
+    (async () => {
+      const data = await analyze(occasion);
+      if (!data) { setErrorMsg('Analysis failed — please try again'); setPhase('error'); return; }
       setRecommendation(data);
+      setAllColors(data.colorRecommendations);
       const top = data.colorRecommendations?.[0];
       if (top) { setSelectedHex(top.hex); setSelectedColorName(top.name); }
       setPhase('results');
+      data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
+      // Pick first 3 trending styles
+      styleIndexRef.current = 3;
+      generateNailArtBatch(stylePoolRef.current.slice(0, 3), top);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [occasion]);
 
-      // Pre-generate ALL color previews in parallel with default shape
-      // so tapping any color is instant once they land
-      if (pngBase64Ref.current) {
-        data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
-      }
-
-      // Nail art previews
-      const initial: NailArtImages = {};
-      data.nailArtSuggestions.forEach((_, i) => { initial[i] = { src: null, loading: true }; });
-      setNailArtImages(initial);
-      data.nailArtSuggestions.forEach((art, i) => {
-        fetch('/api/generate-nail-art', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: pngBase64Ref.current, mediaType: 'image/png',
-            style: art.style, description: art.description,
-            colorName: top?.name ?? '', hex: top?.hex ?? '#C47A5A',
-          }),
-        })
-          .then(r => r.json())
-          .then(json => setNailArtImages(prev => ({ ...prev, [i]: { src: json.image ?? null, loading: false } })))
-          .catch(() => setNailArtImages(prev => ({ ...prev, [i]: { src: null, loading: false } })));
-      });
-    } catch {
-      setErrorMsg('Analysis failed — please try again');
-      setPhase('error');
-    }
-  }, [warmColor]);
-
-  useEffect(() => {
-    if (imageDataUri && occasion) analyze(imageDataUri, occasion);
-  }, [imageDataUri, occasion, analyze]);
-
-  // When cache updates, resolve any pending tap
+  // Resolve pending color tap when cache updates
   useEffect(() => {
     const key = wantedKey.current;
     if (!key) return;
     const cached = colorCache.current[key];
-    if (cached) {
-      setEditedImage(cached);
-      setApplyingColor(false);
-      wantedKey.current = '';
-    }
+    if (cached) { setEditedImage(cached); setApplyingColor(false); wantedKey.current = ''; }
   }, [cacheVersion]);
 
   const applyColor = useCallback((hex: string, colorName: string, shape: string) => {
     const key = `${hex}|${shape}`;
-    setSelectedHex(hex);
-    setSelectedColorName(colorName);
-    setApplyError(null);
-
+    setSelectedHex(hex); setSelectedColorName(colorName); setApplyError(null);
     const cached = colorCache.current[key];
-    if (cached) {
-      // Instant — already in cache
-      setEditedImage(cached);
-      setApplyingColor(false);
-      return;
-    }
-
-    // Not cached yet — show loading and remember what we want
+    if (cached) { setEditedImage(cached); setApplyingColor(false); return; }
     setApplyingColor(true);
     wantedKey.current = key;
-    warmColor(colorName, hex, shape); // kicks off if not already in-flight
+    warmColor(colorName, hex, shape);
   }, [warmColor]);
+
+  const refreshColors = useCallback(async () => {
+    if (refreshingColors || !recommendation) return;
+    setRefreshingColors(true);
+    const existingHexes = allColors.map(c => c.hex);
+    const data = await analyze(occasion, existingHexes);
+    if (data?.colorRecommendations) {
+      const newColors = [...allColors, ...data.colorRecommendations];
+      setAllColors(newColors);
+      data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
+    }
+    setRefreshingColors(false);
+  }, [refreshingColors, recommendation, allColors, analyze, occasion, warmColor]);
+
+  const refreshNailArt = useCallback(() => {
+    if (refreshingArt) return;
+    setRefreshingArt(true);
+    const pool = stylePoolRef.current;
+    const idx = styleIndexRef.current;
+    // Cycle back to start if we've used them all
+    const nextIdx = idx >= pool.length ? 3 : idx + 3;
+    const batch = idx >= pool.length
+      ? pool.slice(0, 3)
+      : pool.slice(idx, idx + 3);
+    styleIndexRef.current = nextIdx >= pool.length ? 3 : nextIdx;
+    const top = allColors[0];
+    generateNailArtBatch(batch, top);
+    setRefreshingArt(false);
+  }, [refreshingArt, allColors, generateNailArtBatch]);
 
   const handleShare = useCallback(async () => {
     if (sharing) return;
@@ -195,16 +241,13 @@ export default function AnalyzePage() {
     const imageToShare = editedImage ?? imageDataUri;
     try {
       if (navigator.share) {
-        const shareData: ShareData = {
-          title: 'My Nail Look — Nail Me',
-          text: `Color: ${selectedColorName} | Shape: ${selectedShape} | Book at Glow Studio`,
-        };
+        const shareData: ShareData = { title: 'My Nail Look — Nail Me', text: `Color: ${selectedColorName} | Shape: ${selectedShape} | Book at Glow Studio` };
         if (imageToShare && navigator.canShare) {
           try {
             const blob = await (await fetch(imageToShare)).blob();
             const file = new File([blob], 'my-nails.png', { type: 'image/png' });
             if (navigator.canShare({ files: [file] })) shareData.files = [file];
-          } catch { /* file share not supported */ }
+          } catch { /* not supported */ }
         }
         await navigator.share(shareData);
       } else {
@@ -222,7 +265,7 @@ export default function AnalyzePage() {
   return (
     <main className="min-h-screen flex flex-col max-w-lg mx-auto" style={{ paddingBottom: 'max(5rem, env(safe-area-inset-bottom))' }}>
 
-      {/* ── Sticky top ── */}
+      {/* Sticky top */}
       <div className="sticky top-0 z-20 bg-[var(--cream)]">
 
         {/* Header */}
@@ -235,11 +278,10 @@ export default function AnalyzePage() {
           <div className="w-14" />
         </div>
 
-        {/* Hand photo */}
+        {/* Hand photo — object-contain so nothing is ever cropped */}
         <div className="mx-4 relative rounded-2xl overflow-hidden bg-[var(--cream-dk)]" style={{ aspectRatio: '4/3' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={displayImage} alt="Your hand" className="w-full h-full object-cover" />
-
+          <img src={displayImage} alt="Your hand" className="w-full h-full object-contain" />
           {applyingColor && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/20">
               <div className="w-6 h-6 rounded-full border-2 border-white border-t-transparent animate-spin" />
@@ -265,7 +307,7 @@ export default function AnalyzePage() {
           </div>
         )}
 
-        {/* Nail shape selector — stores preference, applies on next color tap */}
+        {/* Shape selector */}
         {phase === 'results' && (
           <div className="mt-3 pb-2 px-4 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
             {SHAPES.map(shape => (
@@ -273,9 +315,7 @@ export default function AnalyzePage() {
                 key={shape}
                 onClick={() => setSelectedShape(shape)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                  selectedShape === shape
-                    ? 'bg-[var(--ink)] text-white border-[var(--ink)]'
-                    : 'bg-white text-[var(--ink-mid)] border-[var(--cream-dk)]'
+                  selectedShape === shape ? 'bg-[var(--ink)] text-white border-[var(--ink)]' : 'bg-white text-[var(--ink-mid)] border-[var(--cream-dk)]'
                 }`}
               >
                 {shape}
@@ -292,9 +332,7 @@ export default function AnalyzePage() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`flex-1 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px ${
-                  activeTab === tab
-                    ? 'border-[var(--ink)] text-[var(--ink)]'
-                    : 'border-transparent text-[var(--ink-light)]'
+                  activeTab === tab ? 'border-[var(--ink)] text-[var(--ink)]' : 'border-transparent text-[var(--ink-light)]'
                 }`}
               >
                 {tab === 'colors' ? 'Colors' : 'Nail Art'}
@@ -306,19 +344,14 @@ export default function AnalyzePage() {
         {phase === 'error' && (
           <div className="px-4 mt-4 text-center">
             <p className="text-red-500 text-sm mb-3">{errorMsg}</p>
-            <button
-              onClick={() => { setPhase('analyzing'); if (imageDataUri) analyze(imageDataUri, occasion); }}
-              className="px-6 py-2 rounded-full bg-[var(--ink)] text-white text-sm"
-            >
-              Try again
-            </button>
+            <button onClick={() => { setPhase('analyzing'); analyze(occasion).then(data => { if (data) { setRecommendation(data); setAllColors(data.colorRecommendations); setPhase('results'); } }); }} className="px-6 py-2 rounded-full bg-[var(--ink)] text-white text-sm">Try again</button>
           </div>
         )}
       </div>
 
-      {/* ── Scrollable content ── */}
+      {/* Scrollable content */}
       {phase === 'results' && recommendation && (
-        <div className="flex-1 overflow-y-auto px-4 pt-4 pb-2">
+        <div className="flex-1 px-4 pt-4 pb-2">
 
           {/* Colors tab */}
           {activeTab === 'colors' && (
@@ -327,7 +360,6 @@ export default function AnalyzePage() {
                 <span className="font-medium text-[var(--ink)]">Skin read: </span>
                 <span className="text-[var(--ink-mid)]">{recommendation.skinTone} · {recommendation.undertone} undertone · {recommendation.nailLength} nails</span>
               </div>
-
               {recommendation.stylistNote && (
                 <div className="bg-[var(--rose-pale)] rounded-2xl p-4 border border-rose-100">
                   <p className="text-sm text-[var(--rose-dark)] italic leading-relaxed">&ldquo;{recommendation.stylistNote}&rdquo;</p>
@@ -337,49 +369,47 @@ export default function AnalyzePage() {
               <div>
                 <p className="text-xs text-[var(--ink-light)] uppercase tracking-widest mb-3">Recommended for you</p>
                 <div className="space-y-2">
-                  {recommendation.colorRecommendations.map((c, i) => {
+                  {allColors.map((c, i) => {
                     const key = `${c.hex}|${DEFAULT_SHAPE}`;
                     const isCached = !!colorCache.current[key];
-                    const isLoading = colorLoading.current.has(key);
+                    const isInFlight = colorLoading.current.has(key);
                     return (
                       <button
-                        key={i}
+                        key={`${c.hex}-${i}`}
                         onClick={() => applyColor(c.hex, c.name, selectedShape)}
                         className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-all text-left ${
-                          selectedHex === c.hex
-                            ? 'border-[var(--ink)] bg-white shadow-sm'
-                            : 'border-[var(--cream-dk)] bg-white active:scale-[0.99]'
+                          selectedHex === c.hex ? 'border-[var(--ink)] bg-white shadow-sm' : 'border-[var(--cream-dk)] bg-white active:scale-[0.99]'
                         }`}
                       >
                         <div className="relative flex-shrink-0">
-                          <div
-                            className="w-12 h-12 rounded-full shadow-sm animate-swatch-pop"
-                            style={{ background: c.hex, animationDelay: `${i * 0.06}s` }}
-                          />
-                          {/* Ready indicator */}
-                          {isCached && (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[var(--sage-dark)] border-2 border-white" />
-                          )}
-                          {isLoading && !isCached && (
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white animate-pulse" />
-                          )}
+                          <div className="w-12 h-12 rounded-full shadow-sm animate-swatch-pop" style={{ background: c.hex, animationDelay: `${i * 0.05}s` }} />
+                          {isCached && <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[var(--sage-dark)] border-2 border-white" />}
+                          {isInFlight && !isCached && <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white animate-pulse" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-[var(--ink)] text-sm">{c.name}</p>
                           <p className="text-xs text-[var(--ink-light)] truncate">{c.brand} · {c.productName}</p>
                           <p className="text-xs text-[var(--ink-mid)] mt-0.5 leading-snug">{c.reason}</p>
                         </div>
-                        {selectedHex === c.hex && !applyingColor && (
-                          <span className="text-xs bg-[var(--ink)] text-white px-2 py-0.5 rounded-full flex-shrink-0">On</span>
-                        )}
+                        {selectedHex === c.hex && !applyingColor && <span className="text-xs bg-[var(--ink)] text-white px-2 py-0.5 rounded-full flex-shrink-0">On</span>}
                       </button>
                     );
                   })}
                 </div>
-                <p className="text-xs text-[var(--ink-light)] text-center mt-3">
-                  Green dot = ready · Tap any color to preview on your hand
-                </p>
               </div>
+
+              {/* Refresh colors */}
+              <button
+                onClick={refreshColors}
+                disabled={refreshingColors}
+                className="w-full py-3 rounded-2xl border border-[var(--cream-dk)] bg-white text-sm text-[var(--ink-mid)] font-medium flex items-center justify-center gap-2 active:bg-[var(--cream-dk)]"
+              >
+                {refreshingColors ? (
+                  <><div className="w-4 h-4 rounded-full border-2 border-[var(--ink-light)] border-t-transparent animate-spin" /><span>Finding more colours…</span></>
+                ) : (
+                  <><span>↻</span><span>Show more colours</span></>
+                )}
+              </button>
             </div>
           )}
 
@@ -388,26 +418,28 @@ export default function AnalyzePage() {
             <div className="space-y-4 animate-fade-up">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-[var(--ink-light)] uppercase tracking-widest">Trending now</p>
-                <span className="text-xs bg-[var(--sage-pale)] text-[var(--sage-dark)] px-2 py-0.5 rounded-full">Updated this week</span>
+                <span className="text-xs bg-[var(--sage-pale)] text-[var(--sage-dark)] px-2 py-0.5 rounded-full">Spring 2026</span>
               </div>
 
-              {recommendation.nailArtSuggestions.map((art, i) => {
-                const imgState = nailArtImages[i];
+              {nailArtEntries.map((art, i) => {
                 const tags = OCCASION_TAGS[recommendation.occasion] ?? ['Casual'];
                 return (
-                  <div key={i} className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)] animate-fade-up" style={{ animationDelay: `${i * 0.1}s` }}>
-                    {imgState?.loading ? (
-                      <div className="w-full h-52 shimmer flex items-center justify-center">
-                        <p className="text-xs text-[var(--ink-light)] bg-white/70 px-3 py-1 rounded-full">Generating on your hand…</p>
-                      </div>
-                    ) : imgState?.src ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imgState.src} alt={art.style} className="w-full h-52 object-cover" />
-                    ) : (
-                      <div className="w-full h-52 bg-[var(--cream-dk)] flex items-center justify-center">
-                        <p className="text-xs text-[var(--ink-light)]">Preview unavailable</p>
-                      </div>
-                    )}
+                  <div key={`${art.style}-${i}`} className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)]">
+                    {/* Full image — object-contain so nails are never cropped */}
+                    <div className="w-full bg-[var(--cream-dk)]" style={{ aspectRatio: '1/1' }}>
+                      {art.loading ? (
+                        <div className="w-full h-full shimmer flex items-center justify-center min-h-48">
+                          <p className="text-xs text-[var(--ink-light)] bg-white/70 px-3 py-1 rounded-full">Generating on your hand…</p>
+                        </div>
+                      ) : art.src ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={art.src} alt={art.style} className="w-full h-full object-contain" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center min-h-48">
+                          <p className="text-xs text-[var(--ink-light)]">Preview unavailable</p>
+                        </div>
+                      )}
+                    </div>
 
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2 mb-2">
@@ -426,11 +458,8 @@ export default function AnalyzePage() {
                         <p className="text-xs text-[var(--ink-light)]">{art.toolsNeeded.join(' · ')}</p>
                         <p className="text-xs text-[var(--ink-light)]">{art.estimatedTime}</p>
                       </div>
-                      {imgState?.src && (
-                        <button
-                          onClick={() => setEditedImage(imgState.src!)}
-                          className="w-full py-2.5 rounded-xl bg-[var(--ink)] text-white text-xs font-medium active:opacity-80"
-                        >
+                      {art.src && (
+                        <button onClick={() => setEditedImage(art.src!)} className="w-full py-2.5 rounded-xl bg-[var(--ink)] text-white text-xs font-medium active:opacity-80">
                           Try this look
                         </button>
                       )}
@@ -438,6 +467,15 @@ export default function AnalyzePage() {
                   </div>
                 );
               })}
+
+              {/* Refresh nail art */}
+              <button
+                onClick={refreshNailArt}
+                disabled={refreshingArt || nailArtEntries.some(e => e.loading)}
+                className="w-full py-3 rounded-2xl border border-[var(--cream-dk)] bg-white text-sm text-[var(--ink-mid)] font-medium flex items-center justify-center gap-2 active:bg-[var(--cream-dk)]"
+              >
+                <span>↻</span><span>Show different styles</span>
+              </button>
             </div>
           )}
         </div>
@@ -451,8 +489,7 @@ export default function AnalyzePage() {
             disabled={sharing}
             className="w-full py-3.5 rounded-2xl bg-[var(--ink)] text-white text-sm font-medium animate-cta-glow active:opacity-90 flex items-center justify-center gap-2"
           >
-            <span>↑</span>
-            <span>{sharing ? 'Sharing…' : 'Share my look'}</span>
+            <span>↑</span><span>{sharing ? 'Sharing…' : 'Share my look'}</span>
           </button>
         </div>
       )}

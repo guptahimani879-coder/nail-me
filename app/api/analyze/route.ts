@@ -24,7 +24,7 @@ const DEMO: NailRecommendation = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { image, mediaType, occasion = 'casual' } = await req.json();
+    const { image, mediaType, occasion = 'casual', excludeHexes = [] } = await req.json();
 
     if (!image || !mediaType) {
       return NextResponse.json(
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       base64,
       mediaType as 'image/jpeg' | 'image/png' | 'image/webp',
       occasion,
+      excludeHexes,
     );
 
     return NextResponse.json(recommendation);
