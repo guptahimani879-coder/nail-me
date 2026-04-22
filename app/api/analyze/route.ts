@@ -43,16 +43,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(recommendation);
   } catch (err: unknown) {
-    // If billing/credits issue, return demo data so the UI flow is still testable
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('credit') || msg.includes('billing') || msg.includes('balance')) {
-      console.warn('[/api/analyze] No credits — returning demo data');
-      return NextResponse.json({ ...DEMO, _demo: true });
-    }
     console.error('[/api/analyze]', err);
-    return NextResponse.json(
-      { error: 'ANALYZE_FAILED', message: 'Analysis failed — check ANTHROPIC_API_KEY' },
-      { status: 500 },
-    );
+    // Fall back to demo data for any API error so the app stays usable
+    return NextResponse.json({ ...DEMO, _demo: true });
   }
 }
