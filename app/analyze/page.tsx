@@ -107,7 +107,9 @@ export default function AnalyzePage() {
   // Color preview cache: hex|shape → data URI
   const colorCache = useRef<ColorCache>({});
   const colorLoading = useRef<Set<string>>(new Set());
-  const wantedKey = useRef<string>('');
+  const wantedKey = useRef<string>('');       // user-tapped key waiting for cache
+  const autoApplyKey = useRef<string>('');    // first color key — auto-applied when ready
+  const hasAutoApplied = useRef(false);
   const [cacheVersion, setCacheVersion] = useState(0);
 
   const [sharing, setSharing] = useState(false);
@@ -180,6 +182,8 @@ export default function AnalyzePage() {
       const top = data.colorRecommendations?.[0];
       if (top) { setSelectedHex(top.hex); setSelectedColorName(top.name); }
       setPhase('results');
+      // Mark first color for auto-apply once its preview is ready
+      if (top) autoApplyKey.current = `${top.hex}|${DEFAULT_SHAPE}`;
       data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
       // Pick first 3 trending styles
       styleIndexRef.current = 3;
@@ -188,12 +192,18 @@ export default function AnalyzePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [occasion]);
 
-  // Resolve pending color tap when cache updates
+  // Resolve pending tap OR auto-apply first color when cache updates
   useEffect(() => {
-    const key = wantedKey.current;
-    if (!key) return;
-    const cached = colorCache.current[key];
-    if (cached) { setEditedImage(cached); setApplyingColor(false); wantedKey.current = ''; }
+    // User-initiated tap waiting for generation
+    if (wantedKey.current) {
+      const cached = colorCache.current[wantedKey.current];
+      if (cached) { setEditedImage(cached); setApplyingColor(false); wantedKey.current = ''; }
+    }
+    // Auto-apply first color as soon as its preview lands (no spinner)
+    if (!hasAutoApplied.current && autoApplyKey.current) {
+      const cached = colorCache.current[autoApplyKey.current];
+      if (cached) { setEditedImage(cached); hasAutoApplied.current = true; autoApplyKey.current = ''; }
+    }
   }, [cacheVersion]);
 
   const applyColor = useCallback((hex: string, colorName: string, shape: string) => {
