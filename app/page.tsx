@@ -11,8 +11,7 @@ function resizeImage(dataUri: string, maxDim = 1024): Promise<string> {
       const w = Math.round(img.width * ratio);
       const h = Math.round(img.height * ratio);
       const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = w; canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL('image/jpeg', 0.88));
     };
@@ -28,17 +27,14 @@ const OCCASIONS = [
   { id: 'fun',     label: 'Fun' },
 ] as const;
 
-const EXAMPLE_COLORS = ['#C47A5A', '#8B2635', '#F2A7BB', '#4A7C59', '#2C4A7C'];
-
 export default function Home() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [occasion, setOccasion] = useState<string>('casual');
   const [preview, setPreview] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(async (file: File) => {
     setError(null);
@@ -46,15 +42,11 @@ export default function Home() {
       setError('Please upload a JPG, PNG, or WebP image.');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be under 5 MB.');
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) { setError('Image must be under 5 MB.'); return; }
     setCompressing(true);
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const raw = e.target?.result as string;
-      const dataUri = await resizeImage(raw);
+      const dataUri = await resizeImage(e.target?.result as string);
       setPreview(dataUri);
       setCompressing(false);
     };
@@ -62,14 +54,8 @@ export default function Home() {
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
+    e.preventDefault(); setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
     if (file) handleFile(file);
   }, [handleFile]);
 
@@ -81,147 +67,112 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center px-4 pt-10 pb-8 sm:py-20"
-      style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
-
-      {/* Hero — compact on mobile */}
-      <div className="text-center mb-7 sm:mb-10 animate-fade-up">
-        <p className="text-xs tracking-[0.25em] uppercase text-[var(--ink-light)] mb-2">AI Nail Artist</p>
-        <h1 className="font-display text-5xl sm:text-6xl font-light text-[var(--ink)] leading-tight mb-3">
-          Nail Me
+    <main
+      className="min-h-screen flex flex-col max-w-lg mx-auto px-5"
+      style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}
+    >
+      {/* Salon header */}
+      <div className="pt-10 pb-6 text-center animate-fade-up">
+        <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)] mb-1">Glow Studio</p>
+        <div className="w-8 h-px bg-[var(--cream-dk)] mx-auto mb-4" />
+        <h1 className="font-display text-4xl font-light text-[var(--ink)] leading-tight mb-2">
+          Find your perfect look
         </h1>
-        <p className="text-[var(--ink-mid)] text-sm sm:text-base max-w-xs mx-auto leading-relaxed">
-          Upload a hand photo and get personalised nail color recommendations for your skin tone.
+        <p className="text-[var(--ink-mid)] text-sm leading-relaxed max-w-xs mx-auto">
+          Upload a photo of your hand and get personalised nail colour and art recommendations before your appointment.
         </p>
       </div>
 
-      {/* Card */}
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-[var(--cream-dk)] p-5 sm:p-8 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-
-        {/* Occasion tabs */}
-        <div className="mb-5">
-          <p className="text-xs font-medium text-[var(--ink-light)] uppercase tracking-widest mb-3">Occasion</p>
-          <div className="flex flex-wrap gap-2">
-            {OCCASIONS.map(o => (
-              <button
-                key={o.id}
-                onClick={() => setOccasion(o.id)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                  occasion === o.id
-                    ? 'bg-[var(--ink)] text-white'
-                    : 'bg-[var(--cream)] text-[var(--ink-mid)] active:bg-[var(--cream-dk)]'
-                }`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
+      {/* Upload card */}
+      <div
+        className="bg-white rounded-3xl border border-[var(--cream-dk)] overflow-hidden animate-fade-up"
+        style={{ animationDelay: '0.1s' }}
+      >
         {/* Upload zone */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           onClick={() => !preview && fileInputRef.current?.click()}
-          className={`relative rounded-2xl border-2 border-dashed transition-all overflow-hidden ${
-            preview
-              ? 'border-transparent cursor-default'
-              : dragOver
-                ? 'border-[var(--rose-mid)] bg-[var(--rose-pale)] cursor-copy'
-                : 'border-[var(--cream-dk)] bg-[var(--cream)] active:bg-[var(--cream-dk)] cursor-pointer'
+          className={`relative transition-all overflow-hidden ${
+            preview ? 'cursor-default' : dragOver ? 'bg-[var(--rose-pale)] cursor-copy' : 'cursor-pointer'
           }`}
-          style={{ minHeight: 180 }}
+          style={{ minHeight: 220 }}
         >
           {compressing ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-12">
-              <div className="w-7 h-7 rounded-full border-2 border-[var(--ink)] border-t-transparent animate-spin" />
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+              <div className="w-6 h-6 rounded-full border-2 border-[var(--ink)] border-t-transparent animate-spin" />
               <p className="text-sm text-[var(--ink-mid)]">Preparing photo…</p>
             </div>
           ) : preview ? (
             <div className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview} alt="Your hand" className="w-full rounded-2xl object-cover max-h-60" />
+              <img src={preview} alt="Your hand" className="w-full object-cover max-h-72" />
               <button
                 onClick={(e) => { e.stopPropagation(); setPreview(null); fileInputRef.current!.value = ''; }}
-                className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full w-9 h-9 flex items-center justify-center text-[var(--ink)] shadow-sm active:bg-white text-sm"
+                className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full w-9 h-9 flex items-center justify-center text-[var(--ink)] shadow-sm text-sm"
               >
                 ✕
               </button>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-3 py-10 px-4 text-center">
-              <div className="w-14 h-14 rounded-full bg-[var(--cream-dk)] flex items-center justify-center text-2xl animate-float">
+            <div className="flex flex-col items-center justify-center gap-4 py-14 px-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-[var(--cream)] flex items-center justify-center text-3xl animate-float">
                 ✋
               </div>
               <div>
-                <p className="text-[var(--ink-mid)] font-medium text-sm">Tap to choose a photo</p>
+                <p className="text-[var(--ink)] font-medium text-sm">Upload a hand photo</p>
                 <p className="text-[var(--ink-light)] text-xs mt-1">JPG, PNG, WebP · max 5 MB</p>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                className="mt-1 px-5 py-2 rounded-full bg-[var(--cream-dk)] text-[var(--ink-mid)] text-xs font-medium active:opacity-70"
-              >
-                Upload photo
-              </button>
             </div>
           )}
         </div>
 
-        {/* Gallery picker — no capture attribute so iOS shows both gallery + camera */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={handleInputChange}
-        />
-        {/* Camera picker — capture forces rear camera */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          capture="environment"
-          className="hidden"
-          onChange={handleInputChange}
-        />
+        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
 
-        {error && (
-          <p className="mt-3 text-sm text-red-500 text-center">{error}</p>
-        )}
+        {/* Occasion + CTA */}
+        <div className="px-5 pb-5 pt-4 border-t border-[var(--cream-dk)]">
+          <p className="text-xs text-[var(--ink-light)] uppercase tracking-widest mb-3">Occasion</p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {OCCASIONS.map(o => (
+              <button
+                key={o.id}
+                onClick={() => setOccasion(o.id)}
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  occasion === o.id
+                    ? 'bg-[var(--ink)] text-white'
+                    : 'bg-[var(--cream)] text-[var(--ink-mid)]'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
 
-        <p className="text-center text-xs text-[var(--ink-light)] mt-3">
-          Your photo is analyzed and never stored.
-        </p>
+          {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
-        {/* CTA */}
-        <button
-          onClick={handleAnalyze}
-          disabled={!preview || compressing}
-          className={`mt-4 w-full py-4 rounded-2xl font-medium text-base transition-all ${
-            preview && !compressing
-              ? 'bg-[var(--ink)] text-white animate-cta-glow active:opacity-90 active:scale-[0.98]'
-              : 'bg-[var(--cream-dk)] text-[var(--ink-light)] cursor-not-allowed'
-          }`}
-        >
-          Analyze My Nails →
-        </button>
-      </div>
+          <button
+            onClick={handleAnalyze}
+            disabled={!preview || compressing}
+            className={`w-full py-4 rounded-2xl font-medium text-sm transition-all ${
+              preview && !compressing
+                ? 'bg-[var(--ink)] text-white animate-cta-glow active:opacity-90'
+                : 'bg-[var(--cream-dk)] text-[var(--ink-light)] cursor-not-allowed'
+            }`}
+          >
+            Get My Recommendations →
+          </button>
 
-      {/* Example palette */}
-      <div className="mt-10 text-center animate-fade-up" style={{ animationDelay: '0.2s' }}>
-        <p className="text-xs text-[var(--ink-light)] uppercase tracking-widest mb-4">Colors people love</p>
-        <div className="flex gap-3 justify-center">
-          {EXAMPLE_COLORS.map((hex, i) => (
-            <div
-              key={hex}
-              className="w-9 h-9 rounded-full shadow-sm border border-white/60 animate-swatch-pop"
-              style={{ background: hex, animationDelay: `${0.25 + i * 0.07}s` }}
-            />
-          ))}
+          <p className="text-center text-xs text-[var(--ink-light)] mt-3">
+            Your photo is analysed and never stored.
+          </p>
         </div>
       </div>
 
+      {/* Trust / powered by */}
+      <div className="mt-auto pt-10 text-center animate-fade-up" style={{ animationDelay: '0.2s' }}>
+        <p className="text-xs text-[var(--ink-light)]">Powered by <span className="font-medium text-[var(--ink-mid)]">Nail Me AI</span></p>
+      </div>
     </main>
   );
 }

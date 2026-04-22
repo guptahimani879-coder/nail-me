@@ -66,3 +66,13 @@ button {
 .animate-swatch-pop { animation: swatch-pop 0.4s ease both; }
 .animate-float      { animation: float 4s ease-in-out infinite; }
 .animate-cta-glow   { animation: cta-glow 2s ease-in-out infinite; }
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--cream-dk) 25%, #e8e0d0 50%, var(--cream-dk) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}

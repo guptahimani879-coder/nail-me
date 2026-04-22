@@ -5,7 +5,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, colorName, hex } = await req.json();
+    const { imageBase64, colorName, hex, shape } = await req.json();
 
     if (!imageBase64 || !colorName) {
       return NextResponse.json({ error: 'MISSING_PARAMS' }, { status: 400 });
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const response = await client.images.edit({
       model: 'gpt-image-2',
       image: file,
-      prompt: `Apply ${colorName} nail polish (hex color ${hex}) to all the fingernails in this photo. Keep everything else exactly the same — the hand position, skin tone, lighting, and background. Only change the nail color.`,
+      prompt: `Apply ${colorName} nail polish (hex color ${hex}) to all the fingernails in this photo${shape ? ` with a ${shape} nail shape` : ''}. Keep everything else exactly the same — the hand position, skin tone, lighting, and background. Only change the nails.`,
       n: 1,
       size: '1024x1024',
     });
