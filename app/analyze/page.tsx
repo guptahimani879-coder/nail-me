@@ -159,7 +159,7 @@ export default function AnalyzePage() {
         stylePoolRef.current = shuffle(TRENDING_STYLES);
         styleIndexRef.current = 3;
         setNailArtEntries(firstBatch.map(s => ({ ...s, src: null, loading: true })));
-        toPngBase64(img).then(b64 => generateNailArtBatch(firstBatch, top)).catch(() => {});
+        toPngBase64(img).then(() => generateNailArtBatch(firstBatch, top)).catch(() => {});
 
         return; // skip the normal analyze flow below
       } catch { /* fall through to normal analyze */ }

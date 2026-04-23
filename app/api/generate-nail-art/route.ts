@@ -5,7 +5,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, mediaType, style, description, colorName, hex } = await req.json();
+    const { style, description, colorName, hex } = await req.json();
 
     if (!style || !description) {
       return NextResponse.json({ error: 'MISSING_PARAMS' }, { status: 400 });
