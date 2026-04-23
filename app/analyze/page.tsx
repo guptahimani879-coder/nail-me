@@ -250,22 +250,54 @@ export default function AnalyzePage() {
   const displayImage = editedImage ?? imageDataUri;
   const colors = recommendation?.colorRecommendations?.slice(0, 3) ?? [];
 
-  // Nail swatch: simple SVG nail shape filled with hex color
+  // Stiletto nail SVG path (shared between color swatch and nail art image swatch)
+  const STILETTO_PATH = "M40,4 C40,4 68,32 68,72 L68,104 Q68,114 58,114 L22,114 Q12,114 12,104 L12,72 C12,32 40,4 40,4 Z";
+
   function NailSwatch({ hex, selected }: { hex: string; selected: boolean }) {
     return (
       <div className="w-full h-full flex items-center justify-center" style={{ background: '#f5f0eb' }}>
-        <svg viewBox="0 0 80 110" className="w-3/5 h-3/5 drop-shadow-md">
+        <svg viewBox="0 0 80 118" className="w-3/5 h-3/5 drop-shadow-md">
           <path
-            d="M10,40 Q10,5 40,5 Q70,5 70,40 L70,100 Q70,110 60,110 L20,110 Q10,110 10,100 Z"
+            d={STILETTO_PATH}
             fill={hex}
             stroke={selected ? '#1a1a1a' : 'transparent'}
             strokeWidth="3"
           />
           <path
-            d="M20,20 Q30,12 40,10"
+            d="M26,28 Q33,16 40,12"
             fill="none"
             stroke="rgba(255,255,255,0.45)"
             strokeWidth="3"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  function NailImageSwatch({ src, alt }: { src: string; alt: string }) {
+    const clipId = `clip-${alt.replace(/\s+/g, '-').toLowerCase()}`;
+    return (
+      <div className="w-full h-full flex items-center justify-center" style={{ background: '#f5f0eb' }}>
+        <svg viewBox="0 0 80 118" className="w-3/5 h-3/5 drop-shadow-md">
+          <defs>
+            <clipPath id={clipId}>
+              <path d={STILETTO_PATH} />
+            </clipPath>
+          </defs>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <image
+            href={src}
+            x="0" y="0" width="80" height="118"
+            clipPath={`url(#${clipId})`}
+            preserveAspectRatio="xMidYMid slice"
+          />
+          {/* subtle gloss highlight */}
+          <path
+            d="M26,28 Q33,16 40,12"
+            fill="none"
+            stroke="rgba(255,255,255,0.5)"
+            strokeWidth="2.5"
             strokeLinecap="round"
           />
         </svg>
@@ -422,9 +454,8 @@ export default function AnalyzePage() {
                     key={`${art.style}-${i}`}
                     className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)] text-left"
                   >
-                    <div className="relative w-full bg-[var(--cream-dk)]" style={{ aspectRatio: '1/1' }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={art.src} alt={art.style} className="w-full h-full object-cover" />
+                    <div className="relative w-full bg-[var(--cream)]" style={{ aspectRatio: '1/1' }}>
+                      <NailImageSwatch src={art.src} alt={art.style} />
                     </div>
                     <div className="p-2.5">
                       <p className="font-medium text-[var(--ink)] text-xs leading-tight line-clamp-1">{art.style}</p>
