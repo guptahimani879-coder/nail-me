@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     // Always generate a stunning close-up nail art image — no hand photo needed.
     // This is faster, more visually striking, and shows the art clearly.
-    const prompt = `Extreme close-up beauty photography of five perfectly manicured fingernails showing ${style} nail art. ${description}. Base color: ${colorName} (${hex}). Shot on a clean white or marble background. Ultra high detail, macro lens, editorial nail photography, vibrant and artistic, trending on Pinterest 2026. No hands or skin visible — only the nails.`;
+    const prompt = `Macro beauty photography of five perfectly manicured fingernails with ${style} nail art. ${description}. Accent colour: ${colorName} (${hex}). Shot flat on a white marble surface. Ultra sharp macro lens, vibrant saturated colours, soft bokeh background, professional editorial nail photography. Feminine, pretty, and highly detailed — trending on Pinterest 2026. Only the nails visible, no fingers or skin.`;
 
     const response = await client.images.generate({
       model: 'gpt-image-2',

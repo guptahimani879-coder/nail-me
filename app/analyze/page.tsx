@@ -25,20 +25,20 @@ const OCCASION_TAGS: Record<string, string[]> = {
   fun:     ['Fun', 'Night Out'],
 };
 
-// Curated 2026 trending nail art styles (Pinterest + industry sources)
+// Curated 2026 trending nail art styles — floral, fun, girlie (Pinterest + industry sources)
 const TRENDING_STYLES = [
-  { style: 'Glazed Donut', description: 'Sheer iridescent glaze over a nude base creating a high-shine pearl finish — the Hailey Bieber signature look', complexity: 'easy', estimatedTime: '15 mins', toolsNeeded: ['chrome powder', 'gel top coat'] },
-  { style: 'Chrome Aura', description: 'Blended metallic chrome colours diffused at the centre of each nail to create a glowing, otherworldly aura effect', complexity: 'intermediate', estimatedTime: '30 mins', toolsNeeded: ['chrome powders', 'sponge applicator'] },
-  { style: 'Jelly Glass', description: 'Translucent syrup-coloured polish with iridescent shimmer — looks like hand-blown glass or expensive hard candy', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['sheer jelly polish', 'chrome top coat'] },
-  { style: 'Neo Deco', description: 'Crisp geometric chevrons and fan arches in metallic gold — art deco revival that dominated Pinterest in 2026', complexity: 'intermediate', estimatedTime: '40 mins', toolsNeeded: ['nail tape', 'gold nail art pen', 'fine brush'] },
-  { style: 'Cloudy French', description: 'Soft sheer take on French tips with a milky diffused white edge — the clean-girl aesthetic elevated', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['sheer white polish', 'French tip brush'] },
-  { style: 'Opalescent Pearl', description: 'Milky iridescent finish that shifts between pink, white and lavender like the inside of a seashell', complexity: 'easy', estimatedTime: '15 mins', toolsNeeded: ['pearl chrome powder', 'gel base'] },
-  { style: 'Pastel Swirl', description: 'Dreamy hand-painted pastel swirls blending two or three shades on each nail — searches up 70% on Pinterest', complexity: 'intermediate', estimatedTime: '35 mins', toolsNeeded: ['dotting tool', 'thin brush', 'pastel polishes'] },
-  { style: 'Quiet Luxury', description: 'Barely-there sheer nude with ultra-high gloss finish and a whisper of shimmer — no-nail-look elevated', complexity: 'easy', estimatedTime: '10 mins', toolsNeeded: ['sheer nude polish', 'high-gloss top coat'] },
-  { style: 'Liquid Metal', description: 'Mirror-chrome finish that looks like real liquid jewellery — bold yet minimal, trending across runways', complexity: 'intermediate', estimatedTime: '25 mins', toolsNeeded: ['mirror chrome powder', 'no-wipe top coat'] },
-  { style: 'Wilderkind Floral', description: 'Soft watercolour botanicals in petal pinks and sage greens — one of Pinterest Predicts 2026 top styles', complexity: 'advanced', estimatedTime: '60 mins', toolsNeeded: ['fine nail brush', 'pastel polishes', 'dotting tool'] },
-  { style: 'Striped Chrome', description: 'Clean metallic double-stripe over a nude base — minimal but striking, huge on TikTok this spring', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['nail tape', 'chrome polish', 'fine brush'] },
-  { style: 'Velvet Bloom', description: 'Rich velvet-texture finish with a soft-focus depth — catches light like fabric, trending in quiet luxury circles', complexity: 'intermediate', estimatedTime: '30 mins', toolsNeeded: ['velvet powder', 'matte top coat', 'sponge'] },
+  { style: 'Cherry Blossom', description: 'Delicate hand-painted pink sakura petals scattered across a milky white base — feminine, romantic, and huge on Pinterest 2026', complexity: 'intermediate', estimatedTime: '45 mins', toolsNeeded: ['fine nail brush', 'pink & white polish', 'dotting tool'] },
+  { style: 'Daisy Chain', description: 'Cheerful white daisies with sunny yellow centres on a pastel base — the ultimate cottage-core girlie nail', complexity: 'easy', estimatedTime: '25 mins', toolsNeeded: ['dotting tool', 'fine brush', 'white & yellow polish'] },
+  { style: 'Rosé Garden', description: 'Tiny hand-painted roses in blush and dusty pink — romantic, maximalist, and dominating nail inspo feeds this season', complexity: 'advanced', estimatedTime: '60 mins', toolsNeeded: ['fine nail brush', 'blush polishes', 'rose gold glitter'] },
+  { style: 'Glazed Donut', description: 'Sheer iridescent glaze over a nude base — the Hailey Bieber signature look, effortlessly pretty', complexity: 'easy', estimatedTime: '15 mins', toolsNeeded: ['chrome powder', 'gel top coat'] },
+  { style: 'Butterfly Dream', description: 'Ethereal pastel butterfly wings painted across accent nails with iridescent shimmer — whimsical and magical', complexity: 'advanced', estimatedTime: '55 mins', toolsNeeded: ['fine brush', 'pastel polishes', 'iridescent glitter'] },
+  { style: 'Strawberry Swirl', description: 'Juicy red and cream swirls with tiny seed details — fun, playful, and very viral on TikTok right now', complexity: 'intermediate', estimatedTime: '35 mins', toolsNeeded: ['red & cream polish', 'dotting tool', 'fine brush'] },
+  { style: 'Pastel Swirl', description: 'Dreamy hand-painted swirls blending lavender, mint and blush on each nail — soft and romantic', complexity: 'intermediate', estimatedTime: '35 mins', toolsNeeded: ['dotting tool', 'thin brush', 'pastel polishes'] },
+  { style: 'Opalescent Pearl', description: 'Milky iridescent finish shifting between pink, white and lavender — like the inside of a seashell', complexity: 'easy', estimatedTime: '15 mins', toolsNeeded: ['pearl chrome powder', 'gel base'] },
+  { style: 'Wildflower Meadow', description: 'Tiny wildflowers — lavender, chamomile, forget-me-nots — hand-painted across all five nails for a garden-fairy feel', complexity: 'advanced', estimatedTime: '70 mins', toolsNeeded: ['fine nail brush', 'multi-colour polishes', 'dotting tool'] },
+  { style: 'Jelly Glass', description: 'Translucent syrup-coloured polish with iridescent shimmer — looks like expensive hard candy', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['sheer jelly polish', 'chrome top coat'] },
+  { style: 'Bow & Ribbon', description: 'Cute 3D-effect ribbon bows on a soft pink or nude base — the Coquette aesthetic in full bloom', complexity: 'intermediate', estimatedTime: '30 mins', toolsNeeded: ['fine brush', 'pink polish', 'white nail art pen'] },
+  { style: 'Cloud Nine', description: 'Fluffy white clouds painted over a dreamy sky-blue base with tiny stars — soft, cute, and endlessly shareable', complexity: 'easy', estimatedTime: '20 mins', toolsNeeded: ['blue & white polish', 'fine brush', 'dotting tool'] },
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -68,8 +68,10 @@ async function fetchColorPreview(
     return { image: json.image ?? null, error: json.image ? undefined : 'No image in response' };
   } catch (e) {
     clearTimeout(timer);
-    const msg = e instanceof Error ? e.message : 'Network error';
-    return { image: null, error: msg };
+    if (e instanceof Error && e.name === 'AbortError') {
+      return { image: null, error: 'Preview timed out — tap to retry' };
+    }
+    return { image: null, error: e instanceof Error ? e.message : 'Network error' };
   }
 }
 
@@ -454,7 +456,7 @@ export default function AnalyzePage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-[var(--ink)] text-sm">{c.name}</p>
                           <p className="text-xs text-[var(--ink-light)] truncate">{c.brand} · {c.productName}</p>
-                          <p className="text-xs text-[var(--ink-mid)] mt-0.5 leading-snug">{c.reason}</p>
+                          <p className="text-xs text-[var(--ink-mid)] mt-0.5 leading-snug line-clamp-2">{c.reason}</p>
                         </div>
                         {selectedHex === c.hex && !applyingColor && <span className="text-xs bg-[var(--ink)] text-white px-2 py-0.5 rounded-full flex-shrink-0">On</span>}
                       </button>
