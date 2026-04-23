@@ -19,20 +19,6 @@ function resizeImage(dataUri: string, maxDim = 1024): Promise<string> {
   });
 }
 
-function toPngBase64(dataUri: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d')!.drawImage(img, 0, 0);
-      resolve(c.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''));
-    };
-    img.onerror = reject;
-    img.src = dataUri;
-  });
-}
-
 const OCCASIONS = [
   { id: 'casual',  label: 'Casual' },
   { id: 'work',    label: 'Work' },
@@ -40,15 +26,6 @@ const OCCASIONS = [
   { id: 'holiday', label: 'Holiday' },
   { id: 'fun',     label: 'Fun' },
 ] as const;
-
-type LoadingStep = 'idle' | 'analyzing' | 'applying' | 'done';
-
-const STEP_LABELS: Record<LoadingStep, string> = {
-  idle:      '',
-  analyzing: 'Analysing your skin tone…',
-  applying:  'Preparing your first look…',
-  done:      'Ready!',
-};
 
 export default function Home() {
   const router = useRouter();
@@ -58,9 +35,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [loadingStep, setLoadingStep] = useState<LoadingStep>('idle');
-
-  const isLoading = loadingStep !== 'idle';
+  const [analyzing, setAnalyzing] = useState(false);
 
   const handleFile = useCallback(async (file: File) => {
     setError(null);
@@ -85,93 +60,50 @@ export default function Home() {
   }, [handleFile]);
 
   const handleAnalyze = useCallback(async () => {
-    if (!preview || isLoading) return;
+    if (!preview || analyzing) return;
     setError(null);
+    setAnalyzing(true);
 
-    // Store image + occasion for the results page
     sessionStorage.setItem('nail_image', preview);
     sessionStorage.setItem('nail_occasion', occasion);
     sessionStorage.removeItem('nail_recommendation');
-    sessionStorage.removeItem('nail_first_preview');
-    sessionStorage.removeItem('nail_first_hex');
 
-    // Step 1 — analyse skin tone & get colour recommendations
-    setLoadingStep('analyzing');
     const b64 = preview.replace(/^data:image\/\w+;base64,/, '');
     const mt = preview.match(/^data:(image\/\w+);/)?.[1] ?? 'image/jpeg';
 
-    let recommendation: Record<string, unknown> | null = null;
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ image: b64, mediaType: mt, occasion }),
       });
-      recommendation = await res.json();
+      const recommendation = await res.json();
       sessionStorage.setItem('nail_recommendation', JSON.stringify(recommendation));
     } catch {
       setError('Analysis failed — please try again.');
-      setLoadingStep('idle');
+      setAnalyzing(false);
       return;
     }
 
-    // Step 2 — apply first recommended colour to the photo
-    setLoadingStep('applying');
-    try {
-      const topColor = (recommendation as { colorRecommendations?: { name: string; hex: string }[] })
-        ?.colorRecommendations?.[0];
-      if (topColor) {
-        const pngBase64 = await toPngBase64(preview);
-        const res = await fetch('/api/apply-nail-color', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ imageBase64: pngBase64, colorName: topColor.name, hex: topColor.hex, shape: 'Oval' }),
-        });
-        const json = await res.json();
-        if (json.image) {
-          sessionStorage.setItem('nail_first_preview', json.image);
-          sessionStorage.setItem('nail_first_hex', topColor.hex);
-        }
-      }
-    } catch { /* colour apply failed — results page handles gracefully */ }
-
-    setLoadingStep('done');
+    // Navigate immediately — color preview generates on the results page
     router.push('/analyze');
-  }, [preview, occasion, isLoading, router]);
+  }, [preview, occasion, analyzing, router]);
 
-  // Loading screen — shown after tapping the CTA
-  if (isLoading && preview) {
+  // Loading screen
+  if (analyzing && preview) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center max-w-lg mx-auto px-5 gap-6">
-        <div className="text-center mb-2">
-          <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)]">Glow Studio</p>
-        </div>
+        <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)]">Glow Studio</p>
 
-        {/* Photo */}
         <div className="w-full rounded-3xl overflow-hidden border border-[var(--cream-dk)] relative" style={{ maxHeight: 320 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview} alt="Your hand" className="w-full object-cover" style={{ maxHeight: 320 }} />
           <div className="absolute inset-0 bg-black/10" />
         </div>
 
-        {/* Steps */}
-        <div className="w-full bg-white rounded-2xl border border-[var(--cream-dk)] p-5 space-y-4">
-          {(['analyzing', 'applying'] as LoadingStep[]).map((step) => {
-            const done = step === 'analyzing' && (loadingStep === 'applying' || loadingStep === 'done');
-            const active = loadingStep === step;
-            return (
-              <div key={step} className="flex items-center gap-3">
-                <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs ${
-                  done ? 'bg-[var(--sage-dark)] text-white' : active ? 'border-2 border-[var(--ink)] border-t-transparent animate-spin' : 'border-2 border-[var(--cream-dk)]'
-                }`}>
-                  {done ? '✓' : null}
-                </div>
-                <p className={`text-sm ${active ? 'text-[var(--ink)] font-medium' : done ? 'text-[var(--sage-dark)]' : 'text-[var(--ink-light)]'}`}>
-                  {STEP_LABELS[step]}
-                </p>
-              </div>
-            );
-          })}
+        <div className="w-full bg-white rounded-2xl border border-[var(--cream-dk)] p-5 flex items-center gap-3">
+          <div className="w-6 h-6 rounded-full border-2 border-[var(--ink)] border-t-transparent animate-spin flex-shrink-0" />
+          <p className="text-sm text-[var(--ink)] font-medium">Analysing your skin tone…</p>
         </div>
       </main>
     );

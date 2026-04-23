@@ -45,30 +45,32 @@ function shuffle<T>(arr: T[]): T[] {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
-function toPngBase64(dataUri: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d')!.drawImage(img, 0, 0);
-      resolve(c.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''));
-    };
-    img.onerror = reject;
-    img.src = dataUri;
-  });
-}
-
-async function fetchColorPreview(pngBase64: string, colorName: string, hex: string, shape: string): Promise<string | null> {
+async function fetchColorPreview(
+  colorName: string,
+  hex: string,
+  shape: string,
+  skinTone: string,
+  nailLength: string,
+): Promise<{ image: string | null; error?: string }> {
+  const controller = new AbortController();
+  // Abort after 58s so the spinner always resolves even if the server hangs
+  const timer = setTimeout(() => controller.abort(), 58000);
   try {
     const res = await fetch('/api/apply-nail-color', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ imageBase64: pngBase64, colorName, hex, shape }),
+      body: JSON.stringify({ colorName, hex, shape, skinTone, nailLength }),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     const json = await res.json();
-    return json.image ?? null;
-  } catch { return null; }
+    if (!res.ok) return { image: null, error: json.message ?? json.error ?? `HTTP ${res.status}` };
+    return { image: json.image ?? null, error: json.image ? undefined : 'No image in response' };
+  } catch (e) {
+    clearTimeout(timer);
+    const msg = e instanceof Error ? e.message : 'Network error';
+    return { image: null, error: msg };
+  }
 }
 
 type NailArtEntry = typeof TRENDING_STYLES[0] & { src: string | null; loading: boolean };
@@ -77,9 +79,9 @@ export default function AnalyzePage() {
   const router = useRouter();
 
   const [imageDataUri, setImageDataUri] = useState<string | null>(null);
-  const pngBase64Ref = useRef<string>('');
   const rawBase64Ref = useRef<string>('');
   const mediaTypeRef = useRef<string>('image/jpeg');
+  const recommendationRef = useRef<NailRecommendation | null>(null);
   const [occasion, setOccasion] = useState<string>('casual');
 
   const [phase, setPhase] = useState<Phase>('analyzing');
@@ -108,7 +110,7 @@ export default function AnalyzePage() {
   const colorCache = useRef<ColorCache>({});
   const colorLoading = useRef<Set<string>>(new Set());
   const wantedKey = useRef<string>('');
-  const hasAutoApplied = useRef(false);
+  const loadedFromCache = useRef(false);
   const [cacheVersion, setCacheVersion] = useState(0);
 
   const [sharing, setSharing] = useState(false);
@@ -117,51 +119,44 @@ export default function AnalyzePage() {
     const img = sessionStorage.getItem('nail_image');
     const occ = sessionStorage.getItem('nail_occasion');
     const savedRec = sessionStorage.getItem('nail_recommendation');
-    const savedPreview = sessionStorage.getItem('nail_first_preview');
-    const savedHex = sessionStorage.getItem('nail_first_hex');
 
     if (!img) { router.replace('/'); return; }
     setImageDataUri(img);
     if (occ) setOccasion(occ);
     rawBase64Ref.current = img.replace(/^data:image\/\w+;base64,/, '');
     mediaTypeRef.current = img.match(/^data:(image\/\w+);/)?.[1] ?? 'image/jpeg';
-    toPngBase64(img).then(b64 => { pngBase64Ref.current = b64; }).catch(() => {});
     stylePoolRef.current = shuffle(TRENDING_STYLES);
 
-    // If page.tsx already did the heavy lifting, use pre-computed results
+    // Recommendation was stored by the upload page — use it
     if (savedRec) {
       try {
+        loadedFromCache.current = true;
         const data = JSON.parse(savedRec) as NailRecommendation;
         setRecommendation(data);
+        recommendationRef.current = data;
         setAllColors(data.colorRecommendations);
         const top = data.colorRecommendations?.[0];
-        if (top) { setSelectedHex(top.hex); setSelectedColorName(top.name); }
-
-        // First preview already generated — show it immediately
-        if (savedPreview && savedHex) {
-          setEditedImage(savedPreview);
-          colorCache.current[`${savedHex}|Oval`] = savedPreview;
-          hasAutoApplied.current = true;
+        if (top) {
+          setSelectedHex(top.hex);
+          setSelectedColorName(top.name);
+          // Start generating the first color preview immediately
+          const key = `${top.hex}|${DEFAULT_SHAPE}`;
+          wantedKey.current = key;
+          setApplyingColor(true);
+          warmColor(top.name, top.hex, DEFAULT_SHAPE);
         }
-
         setPhase('results');
 
-        // Warm remaining colors in background
-        toPngBase64(img).then(b64 => {
-          pngBase64Ref.current = b64;
-          data.colorRecommendations.forEach(c => {
-            if (c.hex !== savedHex) warmColor(c.name, c.hex, DEFAULT_SHAPE);
-          });
-        }).catch(() => {});
+        // Warm remaining colors in background (no await — fire and forget)
+        data.colorRecommendations.slice(1).forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
 
-        // Generate nail art
-        const firstBatch = shuffle(TRENDING_STYLES).slice(0, 3);
-        stylePoolRef.current = shuffle(TRENDING_STYLES);
+        // Generate nail art close-ups
+        const firstBatch = stylePoolRef.current.slice(0, 3);
         styleIndexRef.current = 3;
         setNailArtEntries(firstBatch.map(s => ({ ...s, src: null, loading: true })));
-        toPngBase64(img).then(() => generateNailArtBatch(firstBatch, top)).catch(() => {});
+        generateNailArtBatch(firstBatch, top);
 
-        return; // skip the normal analyze flow below
+        return;
       } catch { /* fall through to normal analyze */ }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,9 +166,18 @@ export default function AnalyzePage() {
     const key = `${hex}|${shape}`;
     if (colorCache.current[key] || colorLoading.current.has(key)) return;
     colorLoading.current.add(key);
-    fetchColorPreview(pngBase64Ref.current, colorName, hex, shape).then(src => {
+    const rec = recommendationRef.current;
+    fetchColorPreview(colorName, hex, shape, rec?.skinTone ?? 'medium', rec?.nailLength ?? 'medium').then(({ image, error }) => {
       colorLoading.current.delete(key);
-      if (src) { colorCache.current[key] = src; setCacheVersion(v => v + 1); }
+      if (image) {
+        colorCache.current[key] = image;
+        setCacheVersion(v => v + 1);
+      } else if (wantedKey.current === key) {
+        // Always stop the spinner for the color the user is waiting on
+        setApplyError(error ?? 'Preview generation failed');
+        setApplyingColor(false);
+        wantedKey.current = '';
+      }
     });
   }, []);
 
@@ -185,8 +189,6 @@ export default function AnalyzePage() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: pngBase64Ref.current,
-          mediaType: 'image/png',
           style: style.style,
           description: style.description,
           colorName: topColor?.name ?? '',
@@ -211,19 +213,25 @@ export default function AnalyzePage() {
     } catch { return null; }
   }, []);
 
-  // Initial load
+  // Initial load (skipped when pre-computed results were loaded from sessionStorage)
   useEffect(() => {
-    if (!rawBase64Ref.current || !occasion) return;
+    if (!rawBase64Ref.current || !occasion || loadedFromCache.current) return;
     (async () => {
       const data = await analyze(occasion);
       if (!data) { setErrorMsg('Analysis failed — please try again'); setPhase('error'); return; }
       setRecommendation(data);
+      recommendationRef.current = data;
       setAllColors(data.colorRecommendations);
       const top = data.colorRecommendations?.[0];
-      if (top) { setSelectedHex(top.hex); setSelectedColorName(top.name); }
+      if (top) {
+        setSelectedHex(top.hex);
+        setSelectedColorName(top.name);
+        // Apply first color immediately
+        wantedKey.current = `${top.hex}|${DEFAULT_SHAPE}`;
+        setApplyingColor(true);
+      }
       setPhase('results');
       data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
-      // Pick first 3 trending styles
       styleIndexRef.current = 3;
       generateNailArtBatch(stylePoolRef.current.slice(0, 3), top);
     })();
@@ -246,6 +254,14 @@ export default function AnalyzePage() {
     wantedKey.current = key;
     warmColor(colorName, hex, shape);
   }, [warmColor]);
+
+  // Re-apply current color when the user picks a different nail shape
+  const prevShapeRef = useRef(DEFAULT_SHAPE);
+  useEffect(() => {
+    if (selectedShape === prevShapeRef.current || !selectedHex || !selectedColorName || phase !== 'results') return;
+    prevShapeRef.current = selectedShape;
+    applyColor(selectedHex, selectedColorName, selectedShape);
+  }, [selectedShape, selectedHex, selectedColorName, phase, applyColor]);
 
   const refreshColors = useCallback(async () => {
     if (refreshingColors || !recommendation) return;
@@ -397,6 +413,13 @@ export default function AnalyzePage() {
           {/* Colors tab */}
           {activeTab === 'colors' && (
             <div className="space-y-4 animate-fade-up">
+              {(recommendation as unknown as { _demo?: boolean; _error?: string })._demo && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-800">
+                  <p className="font-medium mb-0.5">OpenAI API not responding — showing demo data</p>
+                  <p className="text-amber-700 break-all">{(recommendation as unknown as { _error?: string })._error ?? 'Unknown error'}</p>
+                  <p className="mt-1 text-amber-600">Check that <strong>OPENAI_API_KEY</strong> is set in your Vercel project → Settings → Environment Variables.</p>
+                </div>
+              )}
               <div className="bg-white rounded-2xl p-4 border border-[var(--cream-dk)] text-sm">
                 <span className="font-medium text-[var(--ink)]">Skin read: </span>
                 <span className="text-[var(--ink-mid)]">{recommendation.skinTone} · {recommendation.undertone} undertone · {recommendation.nailLength} nails</span>
@@ -484,8 +507,6 @@ export default function AnalyzePage() {
                                 method: 'POST',
                                 headers: { 'content-type': 'application/json' },
                                 body: JSON.stringify({
-                                  imageBase64: pngBase64Ref.current,
-                                  mediaType: 'image/png',
                                   style: art.style,
                                   description: art.description,
                                   colorName: allColors[0]?.name ?? '',
@@ -499,7 +520,7 @@ export default function AnalyzePage() {
                             }}
                             className="absolute inset-x-0 bottom-0 py-3 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-center pb-3"
                           >
-                            <span className="text-white text-xs font-medium">Try on my hand ↑</span>
+                            <span className="text-white text-xs font-medium">Preview close-up ↑</span>
                           </button>
                         </>
                       ) : (

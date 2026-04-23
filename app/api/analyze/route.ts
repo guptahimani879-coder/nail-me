@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+export const maxDuration = 60;
 import { analyzeNailsWithGPT } from '@/lib/openai';
 import type { NailRecommendation } from '@/types';
 
@@ -44,7 +46,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(recommendation);
   } catch (err: unknown) {
-    console.error('[/api/analyze]', err);
-    return NextResponse.json({ ...DEMO, _demo: true });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[/api/analyze]', msg);
+    return NextResponse.json({ ...DEMO, _demo: true, _error: msg });
   }
 }
