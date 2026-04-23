@@ -383,6 +383,10 @@ export default function AnalyzePage() {
         {applyError && (
           <div className="mx-4 mt-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
             <span className="flex-1">{applyError}</span>
+            <button
+              onClick={() => { setApplyError(null); applyColor(selectedHex, selectedColorName, selectedShape); }}
+              className="text-white bg-red-500 px-2 py-1 rounded-lg flex-shrink-0"
+            >Retry</button>
             <button onClick={() => setApplyError(null)} className="text-red-400">✕</button>
           </div>
         )}
