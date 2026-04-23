@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 
 export const maxDuration = 60;
 
@@ -7,25 +7,24 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { colorName, hex, shape, skinTone, nailLength } = await req.json();
+    const { imageBase64, colorName, hex, shape } = await req.json();
 
-    if (!colorName || !hex) {
+    if (!imageBase64 || !colorName) {
       return NextResponse.json({ error: 'MISSING_PARAMS' }, { status: 400 });
     }
 
-    const skinDesc = skinTone ?? 'medium';
-    const lengthDesc = nailLength ? `${nailLength}-length` : 'medium-length';
-    const shapeDesc = shape ?? 'oval';
+    const buffer = Buffer.from(imageBase64, 'base64');
+    const file = await toFile(buffer, 'hand.png', { type: 'image/png' });
 
+    const shapeNote = shape ? ` The nails are ${shape} shaped.` : '';
     const prompt =
-      `Professional beauty photography of a woman's hand with ${skinDesc} skin tone. ` +
-      `${lengthDesc} ${shapeDesc}-shaped nails painted with ${colorName} nail polish, hex colour ${hex}. ` +
-      `The nail colour is clearly visible, rich and saturated — unmistakably ${colorName}. ` +
-      `Glossy finish. Clean white background. Soft studio lighting. Macro lens. Editorial quality. ` +
-      `No rings or jewellery. Fingers relaxed, slightly spread. Nails perfectly manicured.`;
+      `Paint all fingernails in this photo with ${colorName} nail polish (hex ${hex}).${shapeNote} ` +
+      `Apply a clean glossy coat of ${colorName} colour to every visible nail. ` +
+      `Do not change anything else — keep the hand, fingers, skin, background, and lighting exactly as they are.`;
 
-    const response = await client.images.generate({
+    const response = await client.images.edit({
       model: 'gpt-image-2',
+      image: file,
       prompt,
       n: 1,
       size: '1024x1024',

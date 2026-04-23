@@ -45,21 +45,33 @@ function shuffle<T>(arr: T[]): T[] {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
+function toPngBase64(dataUri: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      resolve(c.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''));
+    };
+    img.onerror = reject;
+    img.src = dataUri;
+  });
+}
+
 async function fetchColorPreview(
+  imageBase64: string,
   colorName: string,
   hex: string,
   shape: string,
-  skinTone: string,
-  nailLength: string,
 ): Promise<{ image: string | null; error?: string }> {
   const controller = new AbortController();
-  // Abort after 58s so the spinner always resolves even if the server hangs
   const timer = setTimeout(() => controller.abort(), 58000);
   try {
     const res = await fetch('/api/apply-nail-color', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ colorName, hex, shape, skinTone, nailLength }),
+      body: JSON.stringify({ imageBase64, colorName, hex, shape }),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -83,6 +95,7 @@ export default function AnalyzePage() {
   const [imageDataUri, setImageDataUri] = useState<string | null>(null);
   const rawBase64Ref = useRef<string>('');
   const mediaTypeRef = useRef<string>('image/jpeg');
+  const pngBase64Ref = useRef<string>('');
   const recommendationRef = useRef<NailRecommendation | null>(null);
   const [occasion, setOccasion] = useState<string>('casual');
 
@@ -141,15 +154,16 @@ export default function AnalyzePage() {
         if (top) {
           setSelectedHex(top.hex);
           setSelectedColorName(top.name);
-          // Start generating the first color preview immediately
           const key = `${top.hex}|${DEFAULT_SHAPE}`;
           wantedKey.current = key;
           setApplyingColor(true);
-          warmColor(top.name, top.hex, DEFAULT_SHAPE);
+          // Convert to PNG first (images.edit requires PNG), then apply color
+          toPngBase64(img).then(b64 => {
+            pngBase64Ref.current = b64;
+            warmColor(top.name, top.hex, DEFAULT_SHAPE);
+          }).catch(() => { setApplyingColor(false); wantedKey.current = ''; });
         }
         setPhase('results');
-        // Other colors and nail art are generated on demand — not pre-loaded
-
         return;
       } catch { /* fall through to normal analyze */ }
     }
@@ -160,8 +174,7 @@ export default function AnalyzePage() {
     const key = `${hex}|${shape}`;
     if (colorCache.current[key] || colorLoading.current.has(key)) return;
     colorLoading.current.add(key);
-    const rec = recommendationRef.current;
-    fetchColorPreview(colorName, hex, shape, rec?.skinTone ?? 'medium', rec?.nailLength ?? 'medium').then(({ image, error }) => {
+    fetchColorPreview(pngBase64Ref.current, colorName, hex, shape).then(({ image, error }) => {
       colorLoading.current.delete(key);
       if (image) {
         colorCache.current[key] = image;
@@ -244,7 +257,14 @@ export default function AnalyzePage() {
     if (cached) { setEditedImage(cached); setApplyingColor(false); return; }
     setApplyingColor(true);
     wantedKey.current = key;
-    warmColor(colorName, hex, shape);
+    if (pngBase64Ref.current) {
+      warmColor(colorName, hex, shape);
+    } else {
+      // PNG not ready yet — convert first then apply
+      const img = sessionStorage.getItem('nail_image') ?? '';
+      toPngBase64(img).then(b64 => { pngBase64Ref.current = b64; warmColor(colorName, hex, shape); })
+        .catch(() => { setApplyingColor(false); wantedKey.current = ''; });
+    }
   }, [warmColor]);
 
   // Generate nail art only when the user first opens that tab
