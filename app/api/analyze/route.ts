@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
-import { analyzeNailsWithGPT } from '@/lib/openai';
+import { analyzeNailsWithClaude } from '@/lib/claude';
 import type { NailRecommendation } from '@/types';
 
 const DEMO: NailRecommendation = {
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     const base64 = image.replace(/^data:image\/\w+;base64,/, '');
 
-    const recommendation = await analyzeNailsWithGPT(
+    const recommendation = await analyzeNailsWithClaude(
       base64,
       mediaType as 'image/jpeg' | 'image/png' | 'image/webp',
       occasion,
