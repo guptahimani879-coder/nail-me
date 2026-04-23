@@ -146,15 +146,7 @@ export default function AnalyzePage() {
           warmColor(top.name, top.hex, DEFAULT_SHAPE);
         }
         setPhase('results');
-
-        // Warm remaining colors in background (no await — fire and forget)
-        data.colorRecommendations.slice(1).forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
-
-        // Generate nail art close-ups
-        const firstBatch = stylePoolRef.current.slice(0, 3);
-        styleIndexRef.current = 3;
-        setNailArtEntries(firstBatch.map(s => ({ ...s, src: null, loading: true })));
-        generateNailArtBatch(firstBatch, top);
+        // Other colors and nail art are generated on demand — not pre-loaded
 
         return;
       } catch { /* fall through to normal analyze */ }
@@ -231,9 +223,7 @@ export default function AnalyzePage() {
         setApplyingColor(true);
       }
       setPhase('results');
-      data.colorRecommendations.forEach(c => warmColor(c.name, c.hex, DEFAULT_SHAPE));
-      styleIndexRef.current = 3;
-      generateNailArtBatch(stylePoolRef.current.slice(0, 3), top);
+      // Colors and nail art generated on demand
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [occasion]);
@@ -254,6 +244,17 @@ export default function AnalyzePage() {
     wantedKey.current = key;
     warmColor(colorName, hex, shape);
   }, [warmColor]);
+
+  // Generate nail art only when the user first opens that tab
+  const nailArtLoadedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== 'nail-art' || nailArtLoadedRef.current || phase !== 'results' || !recommendation) return;
+    nailArtLoadedRef.current = true;
+    const firstBatch = stylePoolRef.current.slice(0, 3);
+    styleIndexRef.current = 3;
+    setNailArtEntries(firstBatch.map(s => ({ ...s, src: null, loading: true })));
+    generateNailArtBatch(firstBatch, allColors[0]);
+  }, [activeTab, phase, recommendation, allColors, generateNailArtBatch]);
 
   // Re-apply current color when the user picks a different nail shape
   const prevShapeRef = useRef(DEFAULT_SHAPE);
