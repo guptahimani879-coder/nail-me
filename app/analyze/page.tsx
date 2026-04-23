@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import type { NailRecommendation, ColorRecommendation } from '@/types';
+import type { NailRecommendation } from '@/types';
 
 type Phase = 'analyzing' | 'results' | 'error';
 type Tab = 'colors' | 'nail-art';
@@ -11,28 +11,22 @@ type ColorCache = Record<string, string>;
 const SHAPES = ['Round', 'Oval', 'Squoval', 'Square', 'Almond', 'Stiletto', 'Coffin'];
 const DEFAULT_SHAPE = 'Oval';
 
-// 3 curated nail art styles matching the reference images
+// 3 curated nail art styles — images served from /nail-art/ in public folder
 const CURATED_STYLES = [
   {
     style: 'Chrome Halo',
     description: 'Silver-white iridescent chrome with holographic blue shift',
-    complexity: 'easy',
-    estimatedTime: '20 mins',
-    toolsNeeded: ['chrome powder', 'gel base', 'UV lamp'],
+    src: '/nail-art/chrome-halo.jpg',
   },
   {
     style: 'Garden Spirit',
-    description: 'Sage green base with hand-painted ghost flowers and gold star charms',
-    complexity: 'advanced',
-    estimatedTime: '60 mins',
-    toolsNeeded: ['fine brush', 'sage polish', 'gold studs', 'dotting tool'],
+    description: 'Sage green base with ghost flowers and gold star charms',
+    src: '/nail-art/garden-spirit.jpg',
   },
   {
     style: 'Violet Aurora',
-    description: 'Deep violet with full holographic rainbow chrome powder finish',
-    complexity: 'easy',
-    estimatedTime: '20 mins',
-    toolsNeeded: ['violet gel', 'holographic chrome powder', 'UV lamp'],
+    description: 'Deep violet with holographic rainbow chrome powder finish',
+    src: '/nail-art/violet-aurora.jpg',
   },
 ];
 
@@ -78,7 +72,6 @@ async function fetchColorPreview(
   }
 }
 
-type NailArtEntry = typeof CURATED_STYLES[0] & { src: string | null; loading: boolean };
 
 export default function AnalyzePage() {
   const router = useRouter();
@@ -102,7 +95,6 @@ export default function AnalyzePage() {
   const [applyingColor, setApplyingColor] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
-  const [nailArtEntries, setNailArtEntries] = useState<NailArtEntry[]>([]);
 
   // Color preview cache: hex|shape → data URI
   const colorCache = useRef<ColorCache>({});
@@ -166,25 +158,6 @@ export default function AnalyzePage() {
     });
   }, []);
 
-  const generateNailArtBatch = useCallback((topColor: ColorRecommendation | undefined) => {
-    const entries: NailArtEntry[] = CURATED_STYLES.map(s => ({ ...s, src: null, loading: true }));
-    setNailArtEntries(entries);
-    CURATED_STYLES.forEach((style, i) => {
-      fetch('/api/generate-nail-art', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          style: style.style,
-          description: style.description,
-          colorName: topColor?.name ?? '',
-          hex: topColor?.hex ?? '#C47A5A',
-        }),
-      })
-        .then(r => r.json())
-        .then(json => setNailArtEntries(prev => prev.map((e, idx) => idx === i ? { ...e, src: json.image ?? null, loading: false } : e)))
-        .catch(() => setNailArtEntries(prev => prev.map((e, idx) => idx === i ? { ...e, src: null, loading: false } : e)));
-    });
-  }, []);
 
   const analyze = useCallback(async (occ: string) => {
     try {
@@ -240,13 +213,6 @@ export default function AnalyzePage() {
     }
   }, [warmColor]);
 
-  // Generate nail art when user first opens that tab
-  const nailArtLoadedRef = useRef(false);
-  useEffect(() => {
-    if (activeTab !== 'nail-art' || nailArtLoadedRef.current || phase !== 'results' || !recommendation) return;
-    nailArtLoadedRef.current = true;
-    generateNailArtBatch(recommendation.colorRecommendations?.[0]);
-  }, [activeTab, phase, recommendation, generateNailArtBatch]);
 
   // Re-apply color when shape changes
   const prevShapeRef = useRef(DEFAULT_SHAPE);
@@ -451,50 +417,20 @@ export default function AnalyzePage() {
             <div className="animate-fade-up">
               <p className="text-xs text-[var(--ink-light)] uppercase tracking-widest mb-3">Trending now</p>
               <div className="grid grid-cols-3 gap-3">
-                {nailArtEntries.map((art, i) => (
-                  <button
+                {CURATED_STYLES.map((art, i) => (
+                  <div
                     key={`${art.style}-${i}`}
-                    onClick={() => {
-                      if (!art.src) return;
-                      setApplyingColor(true);
-                      fetch('/api/generate-nail-art', {
-                        method: 'POST',
-                        headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({
-                          style: art.style,
-                          description: art.description,
-                          colorName: colors[0]?.name ?? '',
-                          hex: colors[0]?.hex ?? '#C47A5A',
-                        }),
-                      })
-                        .then(r => r.json())
-                        .then(json => { if (json.image) setEditedImage(json.image); })
-                        .catch(() => {})
-                        .finally(() => setApplyingColor(false));
-                    }}
-                    className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)] text-left active:scale-[0.97] transition-all"
+                    className="bg-white rounded-2xl overflow-hidden border border-[var(--cream-dk)] text-left"
                   >
-                    {/* Nail art image area */}
                     <div className="relative w-full bg-[var(--cream-dk)]" style={{ aspectRatio: '1/1' }}>
-                      {art.loading ? (
-                        <div className="absolute inset-0 shimmer flex flex-col items-center justify-center gap-1.5">
-                          <div className="w-4 h-4 rounded-full border-2 border-[var(--ink-light)] border-t-transparent animate-spin" />
-                          <p className="text-[9px] text-[var(--ink-light)] bg-white/80 px-2 py-0.5 rounded-full">~15s</p>
-                        </div>
-                      ) : art.src ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={art.src} alt={art.style} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <p className="text-[9px] text-[var(--ink-light)]">Unavailable</p>
-                        </div>
-                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={art.src} alt={art.style} className="w-full h-full object-cover" />
                     </div>
                     <div className="p-2.5">
                       <p className="font-medium text-[var(--ink)] text-xs leading-tight line-clamp-1">{art.style}</p>
                       <p className="text-[10px] text-[var(--ink-mid)] mt-0.5 line-clamp-2 leading-snug">{art.description}</p>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
