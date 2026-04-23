@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI, { toFile } from 'openai';
+import OpenAI from 'openai';
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -11,33 +11,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'MISSING_PARAMS' }, { status: 400 });
     }
 
-    const prompt = `Apply this nail art to the fingernails in the photo: ${style} — ${description}. Use ${colorName} (${hex}) as the base color. Keep the hand, skin tone, and background identical. Only change the nails.`;
+    // Always generate a stunning close-up nail art image — no hand photo needed.
+    // This is faster, more visually striking, and shows the art clearly.
+    const prompt = `Extreme close-up beauty photography of five perfectly manicured fingernails showing ${style} nail art. ${description}. Base color: ${colorName} (${hex}). Shot on a clean white or marble background. Ultra high detail, macro lens, editorial nail photography, vibrant and artistic, trending on Pinterest 2026. No hands or skin visible — only the nails.`;
 
-    let response;
-
-    if (imageBase64) {
-      // Edit the actual hand photo for a personalised preview
-      const buffer = Buffer.from(imageBase64, 'base64');
-      const ext = mediaType === 'image/png' ? 'png' : 'jpg';
-      const file = await toFile(buffer, `hand.${ext}`, { type: mediaType });
-
-      response = await client.images.edit({
-        model: 'gpt-image-2',
-        image: file,
-        prompt,
-        n: 1,
-        size: '1024x1024',
-      });
-    } else {
-      // Fallback: generate a generic preview
-      response = await client.images.generate({
-        model: 'gpt-image-2',
-        prompt: `Close-up of beautifully manicured nails with ${style} nail art. ${description}. Nail color: ${colorName} (${hex}). Studio beauty photography.`,
-        n: 1,
-        size: '1024x1024',
-        quality: 'medium',
-      });
-    }
+    const response = await client.images.generate({
+      model: 'gpt-image-2',
+      prompt,
+      n: 1,
+      size: '1024x1024',
+      quality: 'high',
+    });
 
     const b64 = response.data?.[0]?.b64_json;
     if (!b64) throw new Error('No image returned');
