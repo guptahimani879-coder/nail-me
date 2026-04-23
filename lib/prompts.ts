@@ -36,7 +36,8 @@ RESPOND ONLY in valid JSON with this exact structure:
   "stylistNote": "A short 1-2 sentence personalized tip"
 }
 
-Return EXACTLY 5 color recommendations and 3 nail art suggestions.
+Return EXACTLY 3 color recommendations and 3 nail art suggestions.
+The "stylistNote" must be ONE sentence, maximum 12 words, direct and specific.
 Complexity must be one of: easy, intermediate, advanced.
 Do not include any text outside the JSON object.`;
 }

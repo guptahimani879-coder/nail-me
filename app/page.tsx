@@ -19,18 +19,10 @@ function resizeImage(dataUri: string, maxDim = 1024): Promise<string> {
   });
 }
 
-const OCCASIONS = [
-  { id: 'casual',  label: 'Casual' },
-  { id: 'work',    label: 'Work' },
-  { id: 'wedding', label: 'Wedding' },
-  { id: 'holiday', label: 'Holiday' },
-  { id: 'fun',     label: 'Fun' },
-] as const;
-
 export default function Home() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [occasion, setOccasion] = useState<string>('casual');
+  const occasion = 'casual';
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
@@ -93,7 +85,7 @@ export default function Home() {
   if (analyzing && preview) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center max-w-lg mx-auto px-5 gap-6">
-        <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)]">Glow Studio</p>
+        <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)]">Your Salon Name</p>
 
         <div className="w-full rounded-3xl overflow-hidden border border-[var(--cream-dk)] relative" style={{ maxHeight: 320 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -116,7 +108,7 @@ export default function Home() {
     >
       {/* Salon header */}
       <div className="pt-10 pb-6 text-center animate-fade-up">
-        <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)] mb-1">Glow Studio</p>
+        <p className="text-xs tracking-[0.3em] uppercase text-[var(--ink-light)] mb-1">Your Salon Name</p>
         <div className="w-8 h-px bg-[var(--cream-dk)] mx-auto mb-4" />
         <h1 className="font-display text-4xl font-light text-[var(--ink)] leading-tight mb-2">
           Find your perfect look
@@ -164,16 +156,6 @@ export default function Home() {
         <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
 
         <div className="px-5 pb-5 pt-4 border-t border-[var(--cream-dk)]">
-          <p className="text-xs text-[var(--ink-light)] uppercase tracking-widest mb-3">Occasion</p>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {OCCASIONS.map(o => (
-              <button key={o.id} onClick={() => setOccasion(o.id)}
-                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${occasion === o.id ? 'bg-[var(--ink)] text-white' : 'bg-[var(--cream)] text-[var(--ink-mid)]'}`}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-
           {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
           <button

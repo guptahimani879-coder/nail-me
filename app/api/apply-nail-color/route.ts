@@ -19,8 +19,10 @@ export async function POST(req: NextRequest) {
     const shapeNote = shape ? ` The nails are ${shape} shaped.` : '';
     const prompt =
       `Paint all fingernails in this photo with ${colorName} nail polish (hex ${hex}).${shapeNote} ` +
-      `Apply a clean glossy coat of ${colorName} colour to every visible nail. ` +
-      `Do not change anything else — keep the hand, fingers, skin, background, and lighting exactly as they are.`;
+      `Apply a clean glossy coat of ${colorName} colour to the ENTIRE nail plate on every finger — ` +
+      `including any natural growth gap or bare area near the cuticle. ` +
+      `Cover the full nail surface from cuticle to tip with uniform colour, leaving no unpainted areas. ` +
+      `Do not change anything else — keep the hand, fingers, skin, rings, background, and lighting exactly as they are.`;
 
     const response = await client.images.edit({
       model: 'gpt-image-2',
