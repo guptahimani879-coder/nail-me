@@ -495,8 +495,9 @@ export default function AnalyzePage() {
                     {/* Close-up nail art image */}
                     <div className="relative w-full bg-[var(--cream-dk)]" style={{ aspectRatio: '1/1' }}>
                       {art.loading ? (
-                        <div className="absolute inset-0 shimmer flex items-center justify-center">
-                          <p className="text-xs text-[var(--ink-light)] bg-white/70 px-3 py-1 rounded-full">Creating nail art…</p>
+                        <div className="absolute inset-0 shimmer flex flex-col items-center justify-center gap-2">
+                          <div className="w-5 h-5 rounded-full border-2 border-[var(--ink-light)] border-t-transparent animate-spin" />
+                          <p className="text-xs text-[var(--ink-light)] bg-white/80 px-3 py-1 rounded-full">Creating nail art… ~15s</p>
                         </div>
                       ) : art.src ? (
                         <>
